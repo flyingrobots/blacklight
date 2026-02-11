@@ -1,4 +1,4 @@
-use blacklight::indexer;
+use blacklight::{indexer, server};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -119,8 +119,17 @@ fn main() {
                 }
             }
         }
-        Commands::Serve { .. } => {
-            eprintln!("blacklight serve: not yet implemented");
+        Commands::Serve { port, no_open } => {
+            let db_path = cli.db.unwrap_or_else(blacklight::db::default_db_path);
+            let claude_dir = cli.claude_dir
+                .unwrap_or_else(|| dirs::home_dir().unwrap().join(".claude"));
+            let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            rt.block_on(async {
+                if let Err(e) = server::start_server(&db_path, &claude_dir, port, no_open).await {
+                    eprintln!("server error: {e:#}");
+                    std::process::exit(1);
+                }
+            });
         }
         Commands::Search { .. } => {
             eprintln!("blacklight search: not yet implemented");
