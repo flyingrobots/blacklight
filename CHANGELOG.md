@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.3.0] - 2026-02-11
+
+### Added — M3 Serve
+
+- Axum web server with embedded static file serving (`blacklight serve`)
+- SQLite connection pool with `spawn_blocking` for async-safe DB access
+- REST API endpoints:
+  - `GET /api/sessions` — paginated session list with project/date filtering
+  - `GET /api/sessions/:id` — session detail with outcomes
+  - `GET /api/sessions/:id/messages` — paginated message thread with content blocks
+  - `GET /api/sessions/:id/tools` — tool call history
+  - `GET /api/sessions/:id/files` — file references
+  - `GET /api/search` — FTS5 full-text search with project/kind filtering
+  - `GET /api/analytics/*` — overview, daily stats, models, tools, projects, outcomes, coverage
+  - `GET /api/projects` — rich per-project detail with tool fingerprints, file counts, date ranges
+  - `GET /api/content/:hash` — blob retrieval
+  - `GET /api/files` — file provenance with operation history
+  - `GET /api/storage` — storage overview with dedup ratio
+- CORS and compression middleware
+- Vue 3 + TypeScript frontend (Vite, vue-router)
+  - Dashboard with overview stats and daily activity chart
+  - Sessions list with filtering, session detail with message thread
+  - Full-text search with kind/project filters and highlighted snippets
+  - Analytics page with daily chart, model usage, tool frequency, outcomes
+  - Projects page with treemap-like grid and stacked tool-frequency fingerprint bars
+  - Files page with provenance tracking
+  - Storage page with dedup stats
+  - BLACKLIGHT.svg logo in sidebar (CSS-filtered for dark theme)
+- Reusable Vue components: ContentBlock, DailyChart, MessageThread, SearchResult, SessionCard, ThinkingBlock, ToolCallCard
+
 ## [0.2.0] - 2026-02-11
 
 ### Added — M2 Excavation
