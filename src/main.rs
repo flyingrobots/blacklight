@@ -1,3 +1,4 @@
+use blacklight::indexer;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -101,8 +102,22 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Index { .. } => {
-            eprintln!("blacklight index: not yet implemented");
+        Commands::Index { full, source, verbose } => {
+            let claude_dir = source.or(cli.claude_dir)
+                .unwrap_or_else(|| dirs::home_dir().unwrap().join(".claude"));
+            let db_path = cli.db.unwrap_or_else(blacklight::db::default_db_path);
+            match indexer::run_index(indexer::IndexConfig {
+                claude_dir,
+                db_path,
+                full,
+                verbose,
+            }) {
+                Ok(report) => print!("{report}"),
+                Err(e) => {
+                    eprintln!("indexing failed: {e:#}");
+                    std::process::exit(1);
+                }
+            }
         }
         Commands::Serve { .. } => {
             eprintln!("blacklight serve: not yet implemented");

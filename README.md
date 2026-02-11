@@ -57,7 +57,7 @@ blacklight
 
 ```bash
 cargo build       # build
-cargo test        # run tests (52 tests)
+cargo test        # run tests (91 tests)
 cargo clippy      # lint
 cargo run -- --help
 ```

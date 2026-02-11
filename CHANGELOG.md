@@ -1,8 +1,28 @@
 # Changelog
 
+## [0.2.0] - 2026-02-11
+
+### Added — M2 Excavation
+
+- Full indexer pipeline: `blacklight index` now crawls `~/.claude/` and populates the database
+- File scanner with 9 file classifications (session JSONL, tasks, facets, plans, history, etc.)
+- Change detection for incremental indexing — second run skips unchanged files
+- Streaming JSONL reader with byte offset tracking and seek support
+- Progress message optimization — raw string scan skips ~28% of lines without any JSON parsing
+- Message handlers for all types: assistant (text, tool_use, thinking), user (text, tool_result), system, summary
+- Batch DB operations — accumulate inserts per line, flush every 500 messages in a single transaction
+- ToolUseTracker — maps Read/Write/Edit tool calls to file paths for the file_references table
+- Session metadata parser (sessions-index.json) with FK-safe ordering
+- Auto-creation of minimal session rows for subagent files
+- Structured data parsers: tasks + dependencies, facets (outcomes/categories/friction), stats-cache, plans, history
+- `--full` flag to force complete re-index
+- `--verbose` flag for per-file logging
+- 91 tests total (39 unit + 52 integration)
+- Realistic integration tests using public domain text (Shakespeare, Whitman, Dickinson, Twain, Poe)
+
 ## [0.1.0] - 2026-02-11
 
-### Added
+### Added — M1 Foundation
 
 - Project scaffold with Cargo.toml and all core dependencies
 - CLI skeleton with `index`, `serve`, `search`, and `stats` subcommands (clap)
