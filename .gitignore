@@ -1,0 +1,23 @@
+# IDE / editor
+CLAUDE.md
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock
+
+# SQLite
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Environment
+.env
+.env.*
