@@ -150,14 +150,17 @@ pub fn get_tool_frequency(conn: &Connection, limit: i64) -> Result<Vec<ToolFrequ
 }
 
 pub fn get_project_breakdown(conn: &Connection) -> Result<Vec<ProjectBreakdown>> {
+    // Use subqueries to avoid cross-product explosion from multi-table JOINs
     let mut stmt = conn.prepare(
         "SELECT s.project_slug,
-                COUNT(DISTINCT s.id) as session_count,
-                COUNT(DISTINCT m.id) as message_count,
-                COUNT(DISTINCT tc.id) as tool_call_count
+                COUNT(*) as session_count,
+                (SELECT COUNT(*) FROM messages m
+                 WHERE m.session_id IN (SELECT id FROM sessions WHERE project_slug = s.project_slug)
+                ) as message_count,
+                (SELECT COUNT(*) FROM tool_calls tc
+                 WHERE tc.session_id IN (SELECT id FROM sessions WHERE project_slug = s.project_slug)
+                ) as tool_call_count
          FROM sessions s
-         LEFT JOIN messages m ON m.session_id = s.id
-         LEFT JOIN tool_calls tc ON tc.session_id = s.id
          GROUP BY s.project_slug
          ORDER BY session_count DESC",
     )?;

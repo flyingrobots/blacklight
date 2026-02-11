@@ -4,19 +4,23 @@ use rusqlite::{params, Connection};
 use crate::server::responses::{ProjectDetail, ToolFrequency};
 
 pub fn get_projects(conn: &Connection) -> Result<Vec<ProjectDetail>> {
+    // Use subqueries to avoid cross-product explosion from multi-table JOINs
     let mut stmt = conn.prepare(
         "SELECT s.project_slug,
                 s.project_path,
                 COUNT(DISTINCT s.id) as session_count,
-                COUNT(DISTINCT m.id) as message_count,
-                COUNT(DISTINCT tc.id) as tool_call_count,
+                (SELECT COUNT(*) FROM messages m
+                 WHERE m.session_id IN (SELECT id FROM sessions WHERE project_slug = s.project_slug)
+                ) as message_count,
+                (SELECT COUNT(*) FROM tool_calls tc
+                 WHERE tc.session_id IN (SELECT id FROM sessions WHERE project_slug = s.project_slug)
+                ) as tool_call_count,
                 MIN(s.created_at) as first_session,
                 MAX(s.modified_at) as last_session,
-                COUNT(DISTINCT fr.file_path) as files_touched
+                (SELECT COUNT(DISTINCT fr.file_path) FROM file_references fr
+                 WHERE fr.session_id IN (SELECT id FROM sessions WHERE project_slug = s.project_slug)
+                ) as files_touched
          FROM sessions s
-         LEFT JOIN messages m ON m.session_id = s.id
-         LEFT JOIN tool_calls tc ON tc.session_id = s.id
-         LEFT JOIN file_references fr ON fr.session_id = s.id
          GROUP BY s.project_slug
          ORDER BY message_count DESC",
     )?;
@@ -37,7 +41,7 @@ pub fn get_projects(conn: &Connection) -> Result<Vec<ProjectDetail>> {
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
-    // Fetch top 5 tools per project
+    // Fetch top 5 tools per project — single query for all projects
     let mut tool_stmt = conn.prepare(
         "SELECT tc.tool_name, COUNT(*) as cnt
          FROM tool_calls tc
