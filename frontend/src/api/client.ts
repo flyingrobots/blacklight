@@ -43,7 +43,11 @@ export const api = {
         const body = await res.json().catch(() => ({ error: res.statusText }))
         throw new Error(body.error || res.statusText)
       }
-      return res.text()
+      const text = await res.text()
+      if (text.startsWith('<!DOCTYPE') || text.startsWith('<html')) {
+        throw new Error('Server returned HTML instead of JSONL — restart the server to pick up the new /raw endpoint')
+      }
+      return text
     },
   },
 
