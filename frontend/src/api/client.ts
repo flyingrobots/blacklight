@@ -37,6 +37,14 @@ export const api = {
       get<ToolCallDetail[]>(`${BASE}/sessions/${id}/tools`),
     files: (id: string) =>
       get<FileReference[]>(`${BASE}/sessions/${id}/files`),
+    raw: async (id: string): Promise<string> => {
+      const res = await fetch(`${BASE}/sessions/${id}/raw`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }))
+        throw new Error(body.error || res.statusText)
+      }
+      return res.text()
+    },
   },
 
   search: (params: { q: string; kind?: string; project?: string; limit?: number; offset?: number }) =>

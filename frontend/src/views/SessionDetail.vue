@@ -52,6 +52,27 @@
           </div>
           <div v-if="!files.length" class="empty">No file references in this session</div>
         </div>
+
+        <div v-if="activeTab === 'Raw'" class="raw-view">
+          <div v-if="rawLoading" class="loading">Loading raw JSONL...</div>
+          <div v-else-if="rawError" class="error">{{ rawError }}</div>
+          <div v-else class="raw-lines">
+            <div
+              v-for="(line, i) in rawLines"
+              :key="i"
+              :class="['raw-line', line.type]"
+            >
+              <div class="raw-line-header" @click="line.expanded = !line.expanded">
+                <span class="raw-line-num">{{ i + 1 }}</span>
+                <span class="raw-line-type">{{ line.type }}</span>
+                <span class="raw-line-role" v-if="line.role">{{ line.role }}</span>
+                <span class="raw-line-preview" v-if="!line.expanded">{{ line.preview }}</span>
+                <span class="raw-toggle">{{ line.expanded ? '\u25BC' : '\u25B6' }}</span>
+              </div>
+              <pre v-if="line.expanded" class="raw-json">{{ line.json }}</pre>
+            </div>
+          </div>
+        </div>
       </div>
     </template>
   </div>
@@ -73,7 +94,19 @@ const messages = ref<MessageDetail[]>([])
 const tools = ref<ToolCallDetail[]>([])
 const files = ref<FileReference[]>([])
 const activeTab = ref('Messages')
-const tabs = ['Messages', 'Tools', 'Files']
+const tabs = ['Messages', 'Tools', 'Files', 'Raw']
+const rawLoading = ref(false)
+const rawError = ref('')
+
+interface RawLine {
+  type: string
+  role: string
+  preview: string
+  json: string
+  expanded: boolean
+}
+
+const rawLines = ref<RawLine[]>([])
 
 async function fetchSession(id: string) {
   loading.value = true
@@ -96,8 +129,58 @@ async function fetchSession(id: string) {
   }
 }
 
+async function fetchRaw(id: string) {
+  if (rawLines.value.length) return // already loaded
+  rawLoading.value = true
+  rawError.value = ''
+  try {
+    const text = await api.sessions.raw(id)
+    rawLines.value = text.split('\n').filter(l => l.trim()).map(line => {
+      try {
+        const obj = JSON.parse(line)
+        const type = obj.type || 'unknown'
+        const role = obj.message?.role || obj.role || ''
+        let preview = ''
+        if (obj.message?.content) {
+          const content = obj.message.content
+          if (typeof content === 'string') {
+            preview = content.slice(0, 120)
+          } else if (Array.isArray(content) && content.length > 0) {
+            const first = content[0]
+            if (first.type === 'text') preview = (first.text || '').slice(0, 120)
+            else if (first.type === 'tool_use') preview = `tool_use: ${first.name}`
+            else if (first.type === 'tool_result') preview = `tool_result (${content.length} blocks)`
+            else preview = `${first.type} (${content.length} blocks)`
+          }
+        }
+        return {
+          type,
+          role,
+          preview,
+          json: JSON.stringify(obj, null, 2),
+          expanded: false,
+        }
+      } catch {
+        return { type: 'parse_error', role: '', preview: line.slice(0, 100), json: line, expanded: false }
+      }
+    })
+  } catch (e: any) {
+    rawError.value = e.message
+  } finally {
+    rawLoading.value = false
+  }
+}
+
 onMounted(() => fetchSession(route.params.id as string))
-watch(() => route.params.id, (id) => { if (id) fetchSession(id as string) })
+watch(() => route.params.id, (id) => {
+  if (id) {
+    rawLines.value = []
+    fetchSession(id as string)
+  }
+})
+watch(activeTab, (tab) => {
+  if (tab === 'Raw') fetchRaw(route.params.id as string)
+})
 </script>
 
 <style scoped>
@@ -178,4 +261,69 @@ watch(() => route.params.id, (id) => { if (id) fetchSession(id as string) })
 .empty { color: var(--text-secondary); padding: 1rem 0; }
 .loading, .error { padding: 2rem; text-align: center; }
 .error { color: var(--danger); }
+
+/* Raw JSONL view */
+.raw-view { max-width: 100%; }
+.raw-lines { display: flex; flex-direction: column; gap: 1px; }
+.raw-line {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.raw-line-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  user-select: none;
+}
+.raw-line-header:hover { background: var(--bg-tertiary); }
+.raw-line-num {
+  color: var(--text-secondary);
+  min-width: 2rem;
+  text-align: right;
+  font-size: 0.75rem;
+}
+.raw-line-type {
+  font-weight: 600;
+  min-width: 8rem;
+  color: var(--accent);
+}
+.raw-line.human .raw-line-type,
+.raw-line.user .raw-line-type { color: var(--accent); }
+.raw-line.assistant .raw-line-type { color: var(--success); }
+.raw-line.summary .raw-line-type { color: var(--purple); }
+.raw-line.system .raw-line-type { color: var(--warning); }
+.raw-line-role {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+.raw-line-preview {
+  color: var(--text-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+.raw-toggle {
+  color: var(--text-secondary);
+  font-size: 0.625rem;
+  flex-shrink: 0;
+}
+.raw-json {
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  background: var(--bg);
+  border: none;
+  border-radius: 0;
+  max-height: 600px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>
