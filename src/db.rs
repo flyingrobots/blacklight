@@ -3,8 +3,9 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
 const MIGRATION_001: &str = include_str!("schema.sql");
+const MIGRATION_002: &str = include_str!("enrich_migration.sql");
 
-const MIGRATIONS: &[(u32, &str)] = &[(1, MIGRATION_001)];
+const MIGRATIONS: &[(u32, &str)] = &[(1, MIGRATION_001), (2, MIGRATION_002)];
 
 /// Open or create a SQLite database at the given path with all optimizations applied.
 pub fn open(path: &Path) -> Result<Connection> {
@@ -96,7 +97,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[test]
@@ -111,7 +112,7 @@ mod tests {
         let version: u32 = conn2
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[test]
@@ -136,6 +137,8 @@ mod tests {
             "daily_stats",
             "model_usage",
             "indexed_files",
+            "session_enrichments",
+            "session_tags",
         ];
 
         for table in &expected_tables {

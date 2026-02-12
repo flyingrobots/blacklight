@@ -2,7 +2,8 @@ use anyhow::Result;
 use rusqlite::{params, Connection};
 
 use crate::server::responses::{
-    FileReference, Paginated, SessionDetail, SessionOutcome, SessionSummary, ToolCallDetail,
+    FileReference, Paginated, SessionDetail, SessionOutcome, SessionSummary, SessionTag,
+    ToolCallDetail,
 };
 
 pub fn list_sessions(
@@ -43,14 +44,29 @@ pub fn list_sessions(
         |row| row.get(0),
     )?;
 
-    // Fetch page
+    // Fetch page — compute message_count from messages table (sessions-index metadata is unreliable),
+    // and fall back to first user message content when first_prompt is NULL.
+    // Join session_enrichments to surface AI-generated titles/summaries.
     let query_sql = format!(
-        "SELECT s.id, s.project_path, s.project_slug, s.first_prompt, s.summary,
-                s.message_count, s.created_at, s.modified_at, s.git_branch,
+        "SELECT s.id, s.project_path, s.project_slug,
+                COALESCE(e.title, s.first_prompt, (
+                    SELECT substr(cs.content, 1, 200)
+                    FROM messages m2
+                    JOIN content_blocks cb ON cb.message_id = m2.id
+                    JOIN content_store cs ON cs.hash = cb.content_hash
+                    WHERE m2.session_id = s.id AND m2.type = 'user'
+                    ORDER BY m2.timestamp ASC
+                    LIMIT 1
+                )) as first_prompt,
+                s.summary,
+                (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as message_count,
+                s.created_at, s.modified_at, s.git_branch,
                 s.claude_version, s.is_sidechain,
-                o.outcome, o.brief_summary
+                o.outcome, o.brief_summary,
+                e.title, e.summary
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
+         LEFT JOIN session_enrichments e ON e.session_id = s.id
          {where_sql}
          ORDER BY s.modified_at DESC
          LIMIT ?{} OFFSET ?{}",
@@ -60,29 +76,56 @@ pub fn list_sessions(
     params_vec.push(Box::new(limit));
     params_vec.push(Box::new(offset));
 
+    let mut tag_stmt = conn.prepare(
+        "SELECT tag, confidence FROM session_tags WHERE session_id = ?1 ORDER BY confidence DESC",
+    )?;
+
     let mut stmt = conn.prepare(&query_sql)?;
-    let items = stmt
+    let rows: Vec<_> = stmt
         .query_map(
             rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())),
             |row| {
-                Ok(SessionSummary {
-                    id: row.get(0)?,
-                    project_path: row.get(1)?,
-                    project_slug: row.get(2)?,
-                    first_prompt: row.get(3)?,
-                    summary: row.get(4)?,
-                    message_count: row.get(5)?,
-                    created_at: row.get(6)?,
-                    modified_at: row.get(7)?,
-                    git_branch: row.get(8)?,
-                    claude_version: row.get(9)?,
-                    is_sidechain: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
-                    outcome: row.get(11)?,
-                    brief_summary: row.get(12)?,
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, Option<String>>(12)?,
+                    row.get::<_, Option<String>>(13)?,
+                    row.get::<_, Option<String>>(14)?,
+                ))
             },
         )?
         .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let mut items = Vec::with_capacity(rows.len());
+    for (id, project_path, project_slug, first_prompt, summary, message_count,
+         created_at, modified_at, git_branch, claude_version, is_sidechain,
+         outcome, brief_summary, enrichment_title, enrichment_summary) in rows
+    {
+        let tags = tag_stmt
+            .query_map(params![id], |row| {
+                Ok(SessionTag {
+                    tag: row.get(0)?,
+                    confidence: row.get(1)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        items.push(SessionSummary {
+            id, project_path, project_slug, first_prompt, summary, message_count,
+            created_at, modified_at, git_branch, claude_version, is_sidechain,
+            outcome, brief_summary, enrichment_title, enrichment_summary, tags,
+        });
+    }
 
     Ok(Paginated {
         items,
@@ -94,13 +137,26 @@ pub fn list_sessions(
 
 pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>> {
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.project_path, s.project_slug, s.first_prompt, s.summary,
-                s.message_count, s.created_at, s.modified_at, s.git_branch,
+        "SELECT s.id, s.project_path, s.project_slug,
+                COALESCE(s.first_prompt, (
+                    SELECT substr(cs.content, 1, 200)
+                    FROM messages m2
+                    JOIN content_blocks cb ON cb.message_id = m2.id
+                    JOIN content_store cs ON cs.hash = cb.content_hash
+                    WHERE m2.session_id = s.id AND m2.type = 'user'
+                    ORDER BY m2.timestamp ASC
+                    LIMIT 1
+                )) as first_prompt,
+                s.summary,
+                (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as message_count,
+                s.created_at, s.modified_at, s.git_branch,
                 s.claude_version, s.is_sidechain,
                 o.underlying_goal, o.outcome, o.helpfulness, o.session_type,
-                o.primary_success, o.friction_detail, o.brief_summary
+                o.primary_success, o.friction_detail, o.brief_summary,
+                e.title, e.summary
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
+         LEFT JOIN session_enrichments e ON e.session_id = s.id
          WHERE s.id = ?1",
     )?;
 
@@ -121,24 +177,46 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                 None
             };
 
-            Ok(SessionDetail {
-                id: row.get(0)?,
-                project_path: row.get(1)?,
-                project_slug: row.get(2)?,
-                first_prompt: row.get(3)?,
-                summary: row.get(4)?,
-                message_count: row.get(5)?,
-                created_at: row.get(6)?,
-                modified_at: row.get(7)?,
-                git_branch: row.get(8)?,
-                claude_version: row.get(9)?,
-                is_sidechain: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
-                outcome,
-            })
+            Ok((
+                SessionDetail {
+                    id: row.get(0)?,
+                    project_path: row.get(1)?,
+                    project_slug: row.get(2)?,
+                    first_prompt: row.get(3)?,
+                    summary: row.get(4)?,
+                    message_count: row.get(5)?,
+                    created_at: row.get(6)?,
+                    modified_at: row.get(7)?,
+                    git_branch: row.get(8)?,
+                    claude_version: row.get(9)?,
+                    is_sidechain: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
+                    outcome,
+                    enrichment_title: row.get(18)?,
+                    enrichment_summary: row.get(19)?,
+                    tags: Vec::new(), // filled below
+                },
+                row.get::<_, String>(0)?, // id again for tag lookup
+            ))
         })
         .optional()?;
 
-    Ok(result)
+    match result {
+        Some((mut detail, sid)) => {
+            let mut tag_stmt = conn.prepare(
+                "SELECT tag, confidence FROM session_tags WHERE session_id = ?1 ORDER BY confidence DESC",
+            )?;
+            detail.tags = tag_stmt
+                .query_map(params![sid], |row| {
+                    Ok(SessionTag {
+                        tag: row.get(0)?,
+                        confidence: row.get(1)?,
+                    })
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(Some(detail))
+        }
+        None => Ok(None),
+    }
 }
 
 pub fn get_session_tools(conn: &Connection, session_id: &str) -> Result<Vec<ToolCallDetail>> {

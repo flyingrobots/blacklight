@@ -5,6 +5,11 @@ export interface Paginated<T> {
   offset: number
 }
 
+export interface SessionTag {
+  tag: string
+  confidence: number
+}
+
 export interface SessionSummary {
   id: string
   project_path: string
@@ -19,6 +24,9 @@ export interface SessionSummary {
   is_sidechain: boolean
   outcome: string | null
   brief_summary: string | null
+  enrichment_title: string | null
+  enrichment_summary: string | null
+  tags: SessionTag[]
 }
 
 export interface SessionOutcome {
@@ -44,6 +52,9 @@ export interface SessionDetail {
   claude_version: string | null
   is_sidechain: boolean
   outcome: SessionOutcome | null
+  enrichment_title: string | null
+  enrichment_summary: string | null
+  tags: SessionTag[]
 }
 
 export interface ContentBlockDetail {

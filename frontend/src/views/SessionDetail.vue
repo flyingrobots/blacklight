@@ -5,12 +5,16 @@
     <template v-else-if="session">
       <div class="header">
         <router-link to="/sessions" class="back">&larr; Sessions</router-link>
-        <h2>{{ session.first_prompt?.slice(0, 100) || 'Session' }}</h2>
+        <h2>{{ session.enrichment_title || session.first_prompt?.slice(0, 100) || 'Session' }}</h2>
         <div class="meta-row">
           <span class="badge">{{ session.project_slug }}</span>
           <span v-if="session.git_branch" class="badge branch">{{ session.git_branch }}</span>
           <span class="date">{{ new Date(session.created_at).toLocaleString() }}</span>
           <span v-if="session.message_count" class="count">{{ session.message_count }} messages</span>
+        </div>
+        <p v-if="session.enrichment_summary" class="enrichment-summary">{{ session.enrichment_summary }}</p>
+        <div v-if="session.tags && session.tags.length" class="tags-row">
+          <span v-for="t in session.tags" :key="t.tag" class="tag-chip">{{ t.tag }}</span>
         </div>
         <p v-if="session.summary" class="summary">{{ session.summary }}</p>
 
@@ -258,6 +262,26 @@ watch(activeTab, (tab) => {
 .op-badge.read { background: #1a3a2a; color: var(--success); }
 .op-badge.write { background: #3a2a1a; color: var(--warning); }
 .op-badge.edit { background: #1a2a3a; color: var(--accent); }
+.enrichment-summary {
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.tags-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.tag-chip {
+  font-size: 0.7rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.125rem 0.5rem;
+  color: var(--text-secondary);
+}
 .empty { color: var(--text-secondary); padding: 1rem 0; }
 .loading, .error { padding: 2rem; text-align: center; }
 .error { color: var(--danger); }

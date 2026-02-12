@@ -37,6 +37,16 @@ pub struct SessionSummary {
     pub is_sidechain: bool,
     pub outcome: Option<String>,
     pub brief_summary: Option<String>,
+    pub enrichment_title: Option<String>,
+    pub enrichment_summary: Option<String>,
+    pub tags: Vec<SessionTag>,
+}
+
+/// Tag with confidence score from AI enrichment.
+#[derive(Debug, Serialize)]
+pub struct SessionTag {
+    pub tag: String,
+    pub confidence: f64,
 }
 
 /// Full session detail.
@@ -54,6 +64,9 @@ pub struct SessionDetail {
     pub claude_version: Option<String>,
     pub is_sidechain: bool,
     pub outcome: Option<SessionOutcome>,
+    pub enrichment_title: Option<String>,
+    pub enrichment_summary: Option<String>,
+    pub tags: Vec<SessionTag>,
 }
 
 #[derive(Debug, Serialize)]

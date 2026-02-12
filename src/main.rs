@@ -1,4 +1,4 @@
-use blacklight::{indexer, server};
+use blacklight::{enrich, indexer, server};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -75,6 +75,21 @@ enum Commands {
         json: bool,
     },
 
+    /// Generate AI titles, summaries, and tags for sessions using Claude
+    Enrich {
+        /// Max sessions to enrich
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Number of concurrent Claude calls (default: 5)
+        #[arg(long, default_value = "5")]
+        concurrency: usize,
+
+        /// Re-enrich already enriched sessions
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Show usage statistics
     Stats {
         /// Show daily activity breakdown
@@ -134,6 +149,24 @@ fn main() {
                 if let Err(e) = server::start_server(&db_path, &claude_dir, port, no_open).await {
                     eprintln!("server error: {e:#}");
                     std::process::exit(1);
+                }
+            });
+        }
+        Commands::Enrich { limit, concurrency, force } => {
+            let db_path = cli.db.unwrap_or_else(blacklight::db::default_db_path);
+            let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            rt.block_on(async {
+                match enrich::run_enrich(enrich::EnrichConfig {
+                    db_path,
+                    limit,
+                    concurrency,
+                    force,
+                }).await {
+                    Ok(report) => print!("{report}"),
+                    Err(e) => {
+                        eprintln!("enrichment failed: {e:#}");
+                        std::process::exit(1);
+                    }
                 }
             });
         }
