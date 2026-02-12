@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::enrich::EnrichReport;
 use crate::indexer::{IndexProgress, IndexReport};
 use crate::notifications::NotificationSender;
 
@@ -113,11 +114,68 @@ impl IndexerState {
     }
 }
 
+/// Enricher run status.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnricherStatus {
+    #[default]
+    Idle,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// Shared enricher state accessible from API handlers.
+pub struct EnricherState {
+    pub status: EnricherStatus,
+    pub cancel_flag: Arc<AtomicBool>,
+    pub sessions_total: usize,
+    pub sessions_done: usize,
+    pub sessions_failed: usize,
+    pub latest_report: Option<EnrichReport>,
+    pub error_message: Option<String>,
+}
+
+impl Default for EnricherState {
+    fn default() -> Self {
+        Self {
+            status: EnricherStatus::Idle,
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            sessions_total: 0,
+            sessions_done: 0,
+            sessions_failed: 0,
+            latest_report: None,
+            error_message: None,
+        }
+    }
+}
+
+impl EnricherState {
+    /// Reset for a new run: clear counters, reset cancel flag, set Running.
+    pub fn reset_for_run(&mut self) {
+        self.status = EnricherStatus::Running;
+        self.cancel_flag.store(false, Ordering::Relaxed);
+        self.sessions_total = 0;
+        self.sessions_done = 0;
+        self.sessions_failed = 0;
+        self.latest_report = None;
+        self.error_message = None;
+    }
+}
+
+/// Handle to a running scheduler task with cancellation support.
+pub struct SchedulerHandle {
+    pub cancel_flag: Arc<AtomicBool>,
+}
+
 /// Shared application state passed to all axum handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<DbPool>,
     pub source_dir: PathBuf,
     pub indexer: Arc<tokio::sync::Mutex<IndexerState>>,
+    pub enricher: Arc<tokio::sync::Mutex<EnricherState>>,
+    pub scheduler: Arc<tokio::sync::Mutex<Option<SchedulerHandle>>>,
     pub notifications: NotificationSender,
 }

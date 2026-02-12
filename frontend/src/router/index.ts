@@ -8,6 +8,7 @@ import Search from '@/views/Search.vue'
 import Analytics from '@/views/Analytics.vue'
 import Storage from '@/views/Storage.vue'
 import Files from '@/views/Files.vue'
+import Review from '@/views/Review.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -20,6 +21,7 @@ const router = createRouter({
     { path: '/analytics', component: Analytics },
     { path: '/storage', component: Storage },
     { path: '/files', component: Files },
+    { path: '/review', component: Review },
   ],
 })
 

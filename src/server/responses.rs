@@ -1,7 +1,8 @@
 use serde::Serialize;
 
+use crate::enrich::EnrichReport;
 use crate::indexer::{IndexProgress, IndexReport};
-use crate::server::state::IndexerStatus;
+use crate::server::state::{EnricherStatus, IndexerStatus};
 
 /// Indexer status response.
 #[derive(Debug, Serialize)]
@@ -10,6 +11,41 @@ pub struct IndexerStatusResponse {
     pub progress: IndexProgress,
     pub latest_report: Option<IndexReport>,
     pub error_message: Option<String>,
+}
+
+/// Enricher status response.
+#[derive(Debug, Serialize)]
+pub struct EnricherStatusResponse {
+    pub status: EnricherStatus,
+    pub sessions_total: usize,
+    pub sessions_done: usize,
+    pub sessions_failed: usize,
+    pub latest_report: Option<EnrichReport>,
+    pub error_message: Option<String>,
+}
+
+/// Review queue item for pending enrichments.
+#[derive(Debug, Serialize)]
+pub struct ReviewItem {
+    pub session_id: String,
+    pub title: String,
+    pub summary: String,
+    pub enriched_at: String,
+    pub model_used: Option<String>,
+    pub project_slug: String,
+    pub session_created_at: String,
+    pub first_prompt: Option<String>,
+    pub tags: Vec<SessionTag>,
+}
+
+/// Schedule configuration response.
+#[derive(Debug, Serialize)]
+pub struct ScheduleConfigResponse {
+    pub enabled: bool,
+    pub interval_minutes: i32,
+    pub run_enrichment: bool,
+    pub enrichment_concurrency: i32,
+    pub updated_at: String,
 }
 
 /// Paginated response wrapper.

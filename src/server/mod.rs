@@ -5,6 +5,7 @@ pub mod params;
 pub mod queries;
 pub mod responses;
 pub mod router;
+pub mod scheduler;
 pub mod state;
 
 use anyhow::Result;
@@ -12,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::notifications;
-use state::{AppState, DbPool, IndexerState};
+use state::{AppState, DbPool, EnricherState, IndexerState};
 
 /// Start the web server on the given port.
 pub async fn start_server(
@@ -26,8 +27,14 @@ pub async fn start_server(
         db: Arc::new(pool),
         source_dir: source_dir.to_path_buf(),
         indexer: Arc::new(tokio::sync::Mutex::new(IndexerState::default())),
+        enricher: Arc::new(tokio::sync::Mutex::new(EnricherState::default())),
+        scheduler: Arc::new(tokio::sync::Mutex::new(None)),
         notifications: notifications::create_channel(),
     };
+
+    // Spawn the background scheduler
+    let handle = scheduler::spawn_scheduler(state.clone());
+    *state.scheduler.lock().await = Some(handle);
 
     let app = router::build_router(state);
 

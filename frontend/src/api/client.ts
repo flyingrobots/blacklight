@@ -3,7 +3,8 @@ import type {
   ToolCallDetail, FileReference, SearchHit, AnalyticsOverview,
   DailyStats, ModelUsage, ToolFrequency, ProjectBreakdown,
   ProjectDetail, OutcomeStats, StorageOverview, ContentBlob,
-  IndexCoverage, IndexerStatusResponse
+  IndexCoverage, IndexerStatusResponse, EnricherStatusResponse,
+  ReviewItem, ScheduleConfig
 } from '@/types'
 
 const BASE = '/api'
@@ -96,5 +97,29 @@ export const api = {
     stop: () => post<unknown>(`${BASE}/indexer/stop`),
     pause: () => post<unknown>(`${BASE}/indexer/pause`),
     resume: () => post<unknown>(`${BASE}/indexer/resume`),
+  },
+
+  enrichment: {
+    status: () => get<EnricherStatusResponse>(`${BASE}/enrichment/status`),
+    start: (params?: { limit?: number; concurrency?: number; force?: boolean }) =>
+      post<unknown>(`${BASE}/enrichment/start`, params ?? {}),
+    stop: () => post<unknown>(`${BASE}/enrichment/stop`),
+    pendingCount: () => get<{ count: number }>(`${BASE}/enrichment/pending-count`),
+  },
+
+  review: {
+    list: (params?: { limit?: number; offset?: number }) =>
+      get<Paginated<ReviewItem>>(`${BASE}/review`, params),
+    approve: (sessionId: string) =>
+      post<unknown>(`${BASE}/review/${sessionId}/approve`),
+    reject: (sessionId: string) =>
+      post<unknown>(`${BASE}/review/${sessionId}/reject`),
+    approveAll: () => post<unknown>(`${BASE}/review/approve-all`),
+  },
+
+  schedule: {
+    get: () => get<ScheduleConfig>(`${BASE}/schedule`),
+    update: (params: Partial<Omit<ScheduleConfig, 'updated_at'>>) =>
+      post<ScheduleConfig>(`${BASE}/schedule`, params),
   },
 }

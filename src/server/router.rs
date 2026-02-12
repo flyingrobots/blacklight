@@ -21,6 +21,9 @@ pub fn build_router(state: AppState) -> Router {
         .merge(api::files::routes())
         .merge(api::storage::routes())
         .merge(api::indexer::routes())
+        .merge(api::enrichment::routes())
+        .merge(api::review::routes())
+        .merge(api::schedule::routes())
         .merge(api::ws::routes());
 
     Router::new()

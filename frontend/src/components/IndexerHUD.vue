@@ -1,15 +1,15 @@
 <template>
   <div
     ref="hudRef"
-    :class="['hud', expanded ? 'hud-expanded' : 'hud-collapsed', `hud-status-${status.status}`]"
+    :class="['hud', expanded ? 'hud-expanded' : 'hud-collapsed', `hud-status-${activeStatus}`]"
     @click="onHudClick"
   >
     <!-- Collapsed pill -->
     <div v-if="!expanded" class="hud-pill">
-      <span v-if="isActive" class="hud-spinner"></span>
-      <span v-else-if="status.status === 'paused'" class="hud-icon hud-icon-paused">&#9646;&#9646;</span>
+      <span v-if="anyActive" class="hud-spinner"></span>
+      <span v-else-if="indexerStatus.status === 'paused'" class="hud-icon hud-icon-paused">&#9646;&#9646;</span>
       <span v-else class="hud-icon">&#9707;</span>
-      <span v-if="isActive || status.status === 'paused'" class="hud-pill-text">
+      <span v-if="anyActive || indexerStatus.status === 'paused'" class="hud-pill-text">
         {{ pillLabel }}
       </span>
     </div>
@@ -17,54 +17,132 @@
     <!-- Expanded card -->
     <div v-if="expanded" class="hud-card" @click.stop>
       <div class="hud-card-header" @click="collapse">
-        <span :class="['status-badge', `status-${status.status}`]">{{ status.status }}</span>
+        <div class="hud-tabs">
+          <button
+            v-for="tab in tabs"
+            :key="tab"
+            :class="['hud-tab', { active: activeTab === tab }]"
+            @click.stop="activeTab = tab"
+          >{{ tab }}</button>
+        </div>
         <button class="hud-close" @click.stop="collapse">&times;</button>
       </div>
 
-      <!-- Progress section -->
-      <div v-if="isActive || status.status === 'paused'" class="hud-progress">
-        <div class="progress-phase">{{ status.progress.phase }}</div>
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: progressPct + '%' }"></div>
+      <!-- INDEXER TAB -->
+      <div v-if="activeTab === 'Indexer'">
+        <div class="hud-status-row">
+          <span :class="['status-badge', `status-${indexerStatus.status}`]">{{ indexerStatus.status }}</span>
         </div>
-        <div class="progress-stats">
-          <span>{{ status.progress.files_done }}/{{ status.progress.files_total }} files</span>
-          <span>{{ status.progress.messages_processed.toLocaleString() }} msgs</span>
-          <span>{{ status.progress.blobs_inserted.toLocaleString() }} blobs</span>
+
+        <div v-if="indexerIsActive || indexerStatus.status === 'paused'" class="hud-progress">
+          <div class="progress-phase">{{ indexerStatus.progress.phase }}</div>
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: indexerPct + '%' }"></div>
+          </div>
+          <div class="progress-stats">
+            <span>{{ indexerStatus.progress.files_done }}/{{ indexerStatus.progress.files_total }} files</span>
+            <span>{{ indexerStatus.progress.messages_processed.toLocaleString() }} msgs</span>
+            <span>{{ indexerStatus.progress.blobs_inserted.toLocaleString() }} blobs</span>
+          </div>
+        </div>
+
+        <div class="hud-controls">
+          <template v-if="indexerIsActive">
+            <button class="btn btn-warning" @click="doPause">Pause</button>
+            <button class="btn btn-danger" @click="doStop">Stop</button>
+          </template>
+          <template v-else-if="indexerStatus.status === 'paused'">
+            <button class="btn btn-primary" @click="doResume">Resume</button>
+            <button class="btn btn-danger" @click="doStop">Stop</button>
+          </template>
+          <template v-else>
+            <button class="btn btn-primary" @click="doStart(false)">Re-index</button>
+            <button class="btn btn-secondary" @click="doStart(true)">Full Re-index</button>
+          </template>
+        </div>
+
+        <div v-if="indexerStatus.latest_report" class="hud-report">
+          <div class="report-title">Last run: {{ indexerStatus.latest_report.elapsed_secs.toFixed(1) }}s</div>
+          <div class="report-stats">
+            <span>{{ indexerStatus.latest_report.sessions_parsed }} sessions</span>
+            <span>{{ indexerStatus.latest_report.messages_processed.toLocaleString() }} messages</span>
+            <span>{{ indexerStatus.latest_report.blobs_inserted.toLocaleString() }} blobs</span>
+            <span>{{ indexerStatus.latest_report.files_processed }} files</span>
+            <span>{{ indexerStatus.latest_report.tool_calls_inserted.toLocaleString() }} tool calls</span>
+          </div>
+        </div>
+
+        <div v-if="indexerStatus.error_message" class="hud-error">
+          {{ indexerStatus.error_message }}
         </div>
       </div>
 
-      <!-- Controls -->
-      <div class="hud-controls">
-        <template v-if="isActive">
-          <button class="btn btn-warning" @click="doPause">Pause</button>
-          <button class="btn btn-danger" @click="doStop">Stop</button>
-        </template>
-        <template v-else-if="status.status === 'paused'">
-          <button class="btn btn-primary" @click="doResume">Resume</button>
-          <button class="btn btn-danger" @click="doStop">Stop</button>
-        </template>
-        <template v-else>
-          <button class="btn btn-primary" @click="doStart(false)">Re-index</button>
-          <button class="btn btn-secondary" @click="doStart(true)">Full Re-index</button>
-        </template>
-      </div>
+      <!-- ENRICHMENT TAB -->
+      <div v-if="activeTab === 'Enrichment'">
+        <div class="hud-status-row">
+          <span :class="['status-badge', `status-${enricherStatus.status}`]">{{ enricherStatus.status }}</span>
+        </div>
 
-      <!-- Last run report -->
-      <div v-if="status.latest_report" class="hud-report">
-        <div class="report-title">Last run: {{ status.latest_report.elapsed_secs.toFixed(1) }}s</div>
-        <div class="report-stats">
-          <span>{{ status.latest_report.sessions_parsed }} sessions</span>
-          <span>{{ status.latest_report.messages_processed.toLocaleString() }} messages</span>
-          <span>{{ status.latest_report.blobs_inserted.toLocaleString() }} blobs</span>
-          <span>{{ status.latest_report.files_processed }} files</span>
-          <span>{{ status.latest_report.tool_calls_inserted.toLocaleString() }} tool calls</span>
+        <div v-if="enricherIsActive" class="hud-progress">
+          <div class="progress-phase">Enriching sessions...</div>
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: enricherPct + '%' }"></div>
+          </div>
+          <div class="progress-stats">
+            <span>{{ enricherStatus.sessions_done }}/{{ enricherStatus.sessions_total }} done</span>
+            <span v-if="enricherStatus.sessions_failed">{{ enricherStatus.sessions_failed }} failed</span>
+          </div>
+        </div>
+
+        <div class="hud-controls">
+          <template v-if="enricherIsActive">
+            <button class="btn btn-danger" @click="doEnrichStop">Stop</button>
+          </template>
+          <template v-else>
+            <button class="btn btn-primary" @click="doEnrichStart(false)">Enrich</button>
+            <button class="btn btn-secondary" @click="doEnrichStart(true)">Force All</button>
+          </template>
+        </div>
+
+        <div v-if="enricherStatus.latest_report" class="hud-report">
+          <div class="report-title">Last run</div>
+          <div class="report-stats">
+            <span>{{ enricherStatus.latest_report.enriched }} enriched</span>
+            <span>{{ enricherStatus.latest_report.skipped }} skipped</span>
+            <span>{{ enricherStatus.latest_report.failed }} failed</span>
+            <span>{{ enricherStatus.latest_report.total_candidates }} candidates</span>
+          </div>
+        </div>
+
+        <div v-if="enricherStatus.error_message" class="hud-error">
+          {{ enricherStatus.error_message }}
         </div>
       </div>
 
-      <!-- Error -->
-      <div v-if="status.error_message" class="hud-error">
-        {{ status.error_message }}
+      <!-- SCHEDULE TAB -->
+      <div v-if="activeTab === 'Schedule'">
+        <div class="schedule-form">
+          <label class="schedule-row">
+            <span>Enabled</span>
+            <input type="checkbox" v-model="scheduleForm.enabled" />
+          </label>
+          <label class="schedule-row">
+            <span>Interval (min)</span>
+            <input type="number" v-model.number="scheduleForm.interval_minutes" min="1" class="schedule-input" />
+          </label>
+          <label class="schedule-row">
+            <span>Run enrichment</span>
+            <input type="checkbox" v-model="scheduleForm.run_enrichment" />
+          </label>
+          <label class="schedule-row">
+            <span>Concurrency</span>
+            <input type="number" v-model.number="scheduleForm.enrichment_concurrency" min="1" max="20" class="schedule-input" />
+          </label>
+          <div class="hud-controls">
+            <button class="btn btn-primary" @click="saveSchedule">Save</button>
+          </div>
+          <div v-if="scheduleSaved" class="schedule-saved">Saved</div>
+        </div>
       </div>
     </div>
   </div>
@@ -76,49 +154,87 @@ import { gsap } from 'gsap'
 // @ts-ignore - macOS case-insensitive FS conflict between flip.d.ts and gsap/Flip module declaration
 import { Flip } from 'gsap/Flip'
 import { api } from '@/api/client'
-import type { IndexerStatusResponse } from '@/types'
+import type { IndexerStatusResponse, EnricherStatusResponse, ScheduleConfig } from '@/types'
 
 gsap.registerPlugin(Flip)
 
 const hudRef = ref<HTMLElement>()
 const expanded = ref(false)
+const tabs = ['Indexer', 'Enrichment', 'Schedule'] as const
+type Tab = typeof tabs[number]
+const activeTab = ref<Tab>('Indexer')
 
-const status = ref<IndexerStatusResponse>({
+const indexerStatus = ref<IndexerStatusResponse>({
   status: 'idle',
   progress: { phase: '', files_total: 0, files_done: 0, messages_processed: 0, blobs_inserted: 0 },
   latest_report: null,
   error_message: null,
 })
 
+const enricherStatus = ref<EnricherStatusResponse>({
+  status: 'idle',
+  sessions_total: 0,
+  sessions_done: 0,
+  sessions_failed: 0,
+  latest_report: null,
+  error_message: null,
+})
+
+const scheduleForm = ref({
+  enabled: true,
+  interval_minutes: 60,
+  run_enrichment: true,
+  enrichment_concurrency: 5,
+})
+const scheduleSaved = ref(false)
+
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-const isActive = computed(() => status.value.status === 'running')
+const indexerIsActive = computed(() => indexerStatus.value.status === 'running')
+const enricherIsActive = computed(() => enricherStatus.value.status === 'running')
+const anyActive = computed(() => indexerIsActive.value || enricherIsActive.value)
 
-const progressPct = computed(() => {
-  const p = status.value.progress
+const activeStatus = computed(() => {
+  if (enricherIsActive.value) return enricherStatus.value.status
+  return indexerStatus.value.status
+})
+
+const indexerPct = computed(() => {
+  const p = indexerStatus.value.progress
   if (p.files_total === 0) return 0
   return Math.min(100, (p.files_done / p.files_total) * 100)
 })
 
+const enricherPct = computed(() => {
+  const s = enricherStatus.value
+  if (s.sessions_total === 0) return 0
+  return Math.min(100, ((s.sessions_done + s.sessions_failed) / s.sessions_total) * 100)
+})
+
 const pillLabel = computed(() => {
-  const p = status.value.progress
-  const pct = progressPct.value
-  if (status.value.status === 'paused') return `Paused ${pct.toFixed(0)}%`
+  if (enricherIsActive.value) {
+    const pct = enricherPct.value
+    return `Enriching ${pct.toFixed(0)}%`
+  }
+  const p = indexerStatus.value.progress
+  const pct = indexerPct.value
+  if (indexerStatus.value.status === 'paused') return `Paused ${pct.toFixed(0)}%`
   if (p.phase) return `${p.phase} ${pct.toFixed(0)}%`
   return 'Running...'
 })
 
-async function pollIndexerStatus() {
+async function pollStatus() {
   try {
-    status.value = await api.indexer.status()
-  } catch {
-    // Ignore poll errors
-  }
+    indexerStatus.value = await api.indexer.status()
+  } catch { /* ignore */ }
+  try {
+    enricherStatus.value = await api.enrichment.status()
+  } catch { /* ignore */ }
 }
 
 function startPolling() {
   if (pollTimer) return
-  pollTimer = setInterval(pollIndexerStatus, 1000)
+  pollTimer = setInterval(pollStatus, 1000)
 }
 
 function stopPolling() {
@@ -151,16 +267,17 @@ function collapse() {
   flipTo(false)
 }
 
+// Indexer actions
 async function doStart(full: boolean) {
   try {
     await api.indexer.start(full)
-    status.value.status = 'running'
-    status.value.progress = { phase: 'Starting...', files_total: 0, files_done: 0, messages_processed: 0, blobs_inserted: 0 }
-    status.value.latest_report = null
-    status.value.error_message = null
+    indexerStatus.value.status = 'running'
+    indexerStatus.value.progress = { phase: 'Starting...', files_total: 0, files_done: 0, messages_processed: 0, blobs_inserted: 0 }
+    indexerStatus.value.latest_report = null
+    indexerStatus.value.error_message = null
     startPolling()
   } catch (e: any) {
-    status.value.error_message = e.message
+    indexerStatus.value.error_message = e.message
   }
 }
 
@@ -168,34 +285,78 @@ async function doStop() {
   try {
     await api.indexer.stop()
   } catch (e: any) {
-    status.value.error_message = e.message
+    indexerStatus.value.error_message = e.message
   }
 }
 
 async function doPause() {
   try {
     await api.indexer.pause()
-    status.value.status = 'paused'
+    indexerStatus.value.status = 'paused'
   } catch (e: any) {
-    status.value.error_message = e.message
+    indexerStatus.value.error_message = e.message
   }
 }
 
 async function doResume() {
   try {
     await api.indexer.resume()
-    status.value.status = 'running'
+    indexerStatus.value.status = 'running'
   } catch (e: any) {
-    status.value.error_message = e.message
+    indexerStatus.value.error_message = e.message
+  }
+}
+
+// Enricher actions
+async function doEnrichStart(force: boolean) {
+  try {
+    await api.enrichment.start({ force })
+    enricherStatus.value.status = 'running'
+    enricherStatus.value.sessions_total = 0
+    enricherStatus.value.sessions_done = 0
+    enricherStatus.value.sessions_failed = 0
+    enricherStatus.value.latest_report = null
+    enricherStatus.value.error_message = null
+    startPolling()
+  } catch (e: any) {
+    enricherStatus.value.error_message = e.message
+  }
+}
+
+async function doEnrichStop() {
+  try {
+    await api.enrichment.stop()
+  } catch (e: any) {
+    enricherStatus.value.error_message = e.message
+  }
+}
+
+// Schedule actions
+async function loadSchedule() {
+  try {
+    const config = await api.schedule.get()
+    scheduleForm.value = {
+      enabled: config.enabled,
+      interval_minutes: config.interval_minutes,
+      run_enrichment: config.run_enrichment,
+      enrichment_concurrency: config.enrichment_concurrency,
+    }
+  } catch { /* ignore */ }
+}
+
+async function saveSchedule() {
+  try {
+    await api.schedule.update(scheduleForm.value)
+    scheduleSaved.value = true
+    setTimeout(() => { scheduleSaved.value = false }, 2000)
+  } catch (e: any) {
+    enricherStatus.value.error_message = e.message
   }
 }
 
 onMounted(async () => {
-  try {
-    status.value = await api.indexer.status()
-  } catch {
-    // Indexer endpoint may not be available
-  }
+  await pollStatus()
+  loadSchedule()
   startPolling()
 })
 
@@ -272,7 +433,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem;
-  width: 340px;
+  width: 360px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 .hud-card-header {
@@ -293,6 +454,36 @@ onUnmounted(() => {
 }
 .hud-close:hover {
   color: var(--text);
+}
+
+/* Tabs */
+.hud-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+.hud-tab {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.hud-tab:hover {
+  color: var(--text);
+  background: var(--bg-tertiary);
+}
+.hud-tab.active {
+  color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+/* Status row */
+.hud-status-row {
+  margin-bottom: 0.75rem;
 }
 
 /* Status badges */
@@ -391,5 +582,37 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 0.75rem;
   color: var(--danger);
+}
+
+/* Schedule form */
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.schedule-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+.schedule-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.schedule-input {
+  width: 80px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.4rem;
+  text-align: right;
+}
+.schedule-saved {
+  font-size: 0.75rem;
+  color: var(--success);
+  text-align: center;
 }
 </style>

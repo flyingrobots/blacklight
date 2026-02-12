@@ -66,7 +66,7 @@ pub fn list_sessions(
                 e.title, e.summary
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
-         LEFT JOIN session_enrichments e ON e.session_id = s.id
+         LEFT JOIN session_enrichments e ON e.session_id = s.id AND e.approval_status = 'approved'
          {where_sql}
          ORDER BY s.modified_at DESC
          LIMIT ?{} OFFSET ?{}",
@@ -156,7 +156,7 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                 e.title, e.summary
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
-         LEFT JOIN session_enrichments e ON e.session_id = s.id
+         LEFT JOIN session_enrichments e ON e.session_id = s.id AND e.approval_status = 'approved'
          WHERE s.id = ?1",
     )?;
 

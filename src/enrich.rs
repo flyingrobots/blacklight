@@ -14,7 +14,7 @@ pub struct EnrichConfig {
     pub force: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct EnrichReport {
     pub enriched: usize,
     pub skipped: usize,
@@ -225,6 +225,8 @@ fn extract_json(text: &str) -> &str {
 }
 
 /// Store enrichment results into the database.
+/// High-confidence enrichments (all tags >= 0.80) auto-approve;
+/// lower-confidence ones go to pending_review.
 fn store_enrichment(
     conn: &Connection,
     session_id: &str,
@@ -232,10 +234,28 @@ fn store_enrichment(
 ) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
 
+    let all_high_confidence = !result.tags.is_empty()
+        && result.tags.iter().all(|t| t.confidence >= 0.80);
+
+    let (approval_status, reviewed_at) = if all_high_confidence {
+        ("approved", Some(now.as_str()))
+    } else {
+        ("pending_review", None)
+    };
+
     conn.execute(
-        "INSERT OR REPLACE INTO session_enrichments (session_id, title, summary, enriched_at, model_used)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![session_id, result.title, result.summary, now, "claude-cli"],
+        "INSERT OR REPLACE INTO session_enrichments
+         (session_id, title, summary, enriched_at, model_used, approval_status, reviewed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            session_id,
+            result.title,
+            result.summary,
+            now,
+            "claude-cli",
+            approval_status,
+            reviewed_at,
+        ],
     )?;
 
     // Delete existing tags for this session (in case of re-enrichment)
@@ -252,6 +272,16 @@ fn store_enrichment(
     }
 
     Ok(())
+}
+
+/// Count enrichments pending human review.
+pub fn pending_review_count(conn: &Connection) -> Result<i64> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM session_enrichments WHERE approval_status = 'pending_review'",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(count)
 }
 
 /// Run the enrichment pipeline.

@@ -9,6 +9,12 @@
           <li><router-link to="/analytics">Analytics</router-link></li>
           <li><router-link to="/files">Files</router-link></li>
           <li><router-link to="/storage">Storage</router-link></li>
+          <li class="nav-review">
+            <router-link to="/review">
+              Review
+              <span v-if="pendingReviewCount > 0" class="review-badge">{{ pendingReviewCount }}</span>
+            </router-link>
+          </li>
         </ul>
       </nav>
       <div class="masthead">
@@ -42,12 +48,15 @@ import logoUrl from '@/assets/BLACKLIGHT.svg'
 import IndexerHUD from '@/components/IndexerHUD.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 import { useNotifications } from '@/composables/useNotifications'
+import { api } from '@/api/client'
 
 const router = useRouter()
 const logoRef = ref<HTMLImageElement>()
 const logoWrapRef = ref<HTMLElement>()
 const circlesRef = ref<SVGSVGElement>()
 const searchQuery = ref('')
+const pendingReviewCount = ref(0)
+let reviewPollTimer: ReturnType<typeof setInterval> | null = null
 const { connectWs, disconnectWs } = useNotifications()
 
 function onSearch() {
@@ -77,8 +86,17 @@ function getLetterBounds(): { cx: number; cy: number; r: number }[] {
   }))
 }
 
+async function pollPendingReview() {
+  try {
+    const data = await api.enrichment.pendingCount()
+    pendingReviewCount.value = data.count
+  } catch { /* ignore */ }
+}
+
 onMounted(() => {
   connectWs()
+  pollPendingReview()
+  reviewPollTimer = setInterval(pollPendingReview, 30_000)
 
   if (!circlesRef.value || !logoWrapRef.value) return
 
@@ -158,6 +176,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   disconnectWs()
+  if (reviewPollTimer) {
+    clearInterval(reviewPollTimer)
+    reviewPollTimer = null
+  }
 })
 </script>
 
@@ -255,6 +277,27 @@ onUnmounted(() => {
 .nav-search .search-input::placeholder {
   color: var(--text-secondary);
   opacity: 0.6;
+}
+
+/* Review badge */
+.nav-review a {
+  position: relative;
+}
+.review-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+  line-height: 1;
 }
 
 /* Content area */

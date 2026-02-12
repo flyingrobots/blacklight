@@ -243,3 +243,47 @@ export interface IndexerStatusResponse {
   latest_report: IndexReport | null
   error_message: string | null
 }
+
+// Enricher types
+
+export type EnricherStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface EnrichReport {
+  enriched: number
+  skipped: number
+  failed: number
+  total_candidates: number
+}
+
+export interface EnricherStatusResponse {
+  status: EnricherStatus
+  sessions_total: number
+  sessions_done: number
+  sessions_failed: number
+  latest_report: EnrichReport | null
+  error_message: string | null
+}
+
+// Review types
+
+export interface ReviewItem {
+  session_id: string
+  title: string
+  summary: string
+  enriched_at: string
+  model_used: string | null
+  project_slug: string
+  session_created_at: string
+  first_prompt: string | null
+  tags: SessionTag[]
+}
+
+// Schedule types
+
+export interface ScheduleConfig {
+  enabled: boolean
+  interval_minutes: number
+  run_enrichment: boolean
+  enrichment_concurrency: number
+  updated_at: string
+}
