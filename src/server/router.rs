@@ -19,7 +19,9 @@ pub fn build_router(state: AppState) -> Router {
         .merge(api::projects::routes())
         .merge(api::content::routes())
         .merge(api::files::routes())
-        .merge(api::storage::routes());
+        .merge(api::storage::routes())
+        .merge(api::indexer::routes())
+        .merge(api::ws::routes());
 
     Router::new()
         .nest("/api", api_routes)

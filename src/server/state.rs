@@ -1,7 +1,12 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+use crate::indexer::{IndexProgress, IndexReport};
+use crate::notifications::NotificationSender;
 
 /// A pool of SQLite connections for use with tokio::spawn_blocking.
 /// rusqlite Connection is !Send, so we hold them behind a Mutex and
@@ -60,9 +65,59 @@ impl DbPool {
     }
 }
 
+/// Indexer run status.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexerStatus {
+    #[default]
+    Idle,
+    Running,
+    Paused,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// Shared indexer state accessible from API handlers.
+pub struct IndexerState {
+    pub status: IndexerStatus,
+    pub progress: Arc<Mutex<IndexProgress>>,
+    pub cancel_flag: Arc<AtomicBool>,
+    pub pause_flag: Arc<AtomicBool>,
+    pub latest_report: Option<IndexReport>,
+    pub error_message: Option<String>,
+}
+
+impl Default for IndexerState {
+    fn default() -> Self {
+        Self {
+            status: IndexerStatus::Idle,
+            progress: Arc::new(Mutex::new(IndexProgress::default())),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            pause_flag: Arc::new(AtomicBool::new(false)),
+            latest_report: None,
+            error_message: None,
+        }
+    }
+}
+
+impl IndexerState {
+    /// Reset for a new run: clear progress, reset cancel flag, set Running.
+    pub fn reset_for_run(&mut self) {
+        self.status = IndexerStatus::Running;
+        self.cancel_flag.store(false, Ordering::Relaxed);
+        self.pause_flag.store(false, Ordering::Relaxed);
+        *self.progress.lock().unwrap() = IndexProgress::default();
+        self.latest_report = None;
+        self.error_message = None;
+    }
+}
+
 /// Shared application state passed to all axum handlers.
 #[derive(Clone)]
 pub struct AppState {
-    pub db: std::sync::Arc<DbPool>,
+    pub db: Arc<DbPool>,
     pub source_dir: PathBuf,
+    pub indexer: Arc<tokio::sync::Mutex<IndexerState>>,
+    pub notifications: NotificationSender,
 }

@@ -38,30 +38,14 @@ pub fn handle_assistant(
     match &envelope.message.content {
         ContentValue::Text(text) => {
             let hash = content::hash_content(text);
-            let stored = content::should_dedup(text);
-            if stored {
-                ops.blobs.push((
-                    hash.clone(),
-                    text.clone(),
-                    text.len() as i64,
-                    "text".into(),
-                ));
-                ops.blob_refs.push((
-                    hash.clone(),
-                    msg_id.clone(),
-                    "response_text".into(),
-                ));
-                ops.fts_entries.push((
-                    hash.clone(),
-                    "text".into(),
-                    text.clone(),
-                ));
-            }
+            ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "text".into()));
+            ops.blob_refs.push((hash.clone(), msg_id.clone(), "response_text".into()));
+            ops.fts_entries.push((hash.clone(), "text".into(), text.clone()));
             ops.content_blocks.push(ContentBlockRow {
                 message_id: msg_id.clone(),
                 block_index: 0,
                 block_type: "text".into(),
-                content_hash: if stored { Some(hash) } else { None },
+                content_hash: Some(hash),
                 tool_name: None,
                 tool_use_id: None,
                 tool_input_hash: None,
@@ -72,33 +56,14 @@ pub fn handle_assistant(
             match block {
                 ContentBlock::Text { text } => {
                     let hash = content::hash_content(text);
-                    if content::should_dedup(text) {
-                        ops.blobs.push((
-                            hash.clone(),
-                            text.clone(),
-                            text.len() as i64,
-                            "text".into(),
-                        ));
-                        ops.blob_refs.push((
-                            hash.clone(),
-                            msg_id.clone(),
-                            "response_text".into(),
-                        ));
-                        ops.fts_entries.push((
-                            hash.clone(),
-                            "text".into(),
-                            text.clone(),
-                        ));
-                    }
+                    ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "text".into()));
+                    ops.blob_refs.push((hash.clone(), msg_id.clone(), "response_text".into()));
+                    ops.fts_entries.push((hash.clone(), "text".into(), text.clone()));
                     ops.content_blocks.push(ContentBlockRow {
                         message_id: msg_id.clone(),
                         block_index: idx as i64,
                         block_type: "text".into(),
-                        content_hash: if content::should_dedup(text) {
-                            Some(hash)
-                        } else {
-                            None
-                        },
+                        content_hash: Some(hash),
                         tool_name: None,
                         tool_use_id: None,
                         tool_input_hash: None,
@@ -107,15 +72,8 @@ pub fn handle_assistant(
                 ContentBlock::ToolUse { id, name, input } => {
                     let input_str = serde_json::to_string(input).unwrap_or_default();
                     let input_hash = content::hash_content(&input_str);
-
-                    if content::should_dedup(&input_str) {
-                        ops.blobs.push((
-                            input_hash.clone(),
-                            input_str.clone(),
-                            input_str.len() as i64,
-                            "tool_input".into(),
-                        ));
-                    }
+                    let input_len = input_str.len() as i64;
+                    ops.blobs.push((input_hash.clone(), input_str, input_len, "tool_input".into()));
 
                     ops.content_blocks.push(ContentBlockRow {
                         message_id: msg_id.clone(),
@@ -124,11 +82,7 @@ pub fn handle_assistant(
                         content_hash: None,
                         tool_name: Some(name.clone()),
                         tool_use_id: Some(id.clone()),
-                        tool_input_hash: if content::should_dedup(&input_str) {
-                            Some(input_hash.clone())
-                        } else {
-                            None
-                        },
+                        tool_input_hash: Some(input_hash.clone()),
                     });
 
                     ops.tool_calls.push(ToolCallRow {
@@ -136,11 +90,7 @@ pub fn handle_assistant(
                         message_id: msg_id.clone(),
                         session_id: session_id.clone(),
                         tool_name: name.clone(),
-                        input_hash: if content::should_dedup(&input_str) {
-                            Some(input_hash)
-                        } else {
-                            None
-                        },
+                        input_hash: Some(input_hash),
                         timestamp: timestamp.clone(),
                     });
 
@@ -148,24 +98,13 @@ pub fn handle_assistant(
                 }
                 ContentBlock::Thinking { thinking } => {
                     let hash = content::hash_content(thinking);
-                    if content::should_dedup(thinking) {
-                        ops.blobs.push((
-                            hash.clone(),
-                            thinking.clone(),
-                            thinking.len() as i64,
-                            "thinking".into(),
-                        ));
-                    }
+                    ops.blobs.push((hash.clone(), thinking.clone(), thinking.len() as i64, "thinking".into()));
                     // No FTS for thinking blocks
                     ops.content_blocks.push(ContentBlockRow {
                         message_id: msg_id.clone(),
                         block_index: idx as i64,
                         block_type: "thinking".into(),
-                        content_hash: if content::should_dedup(thinking) {
-                            Some(hash)
-                        } else {
-                            None
-                        },
+                        content_hash: Some(hash),
                         tool_name: None,
                         tool_use_id: None,
                         tool_input_hash: None,
@@ -207,30 +146,14 @@ pub fn handle_user(
     match &envelope.message.content {
         ContentValue::Text(text) => {
             let hash = content::hash_content(text);
-            let stored = content::should_dedup(text);
-            if stored {
-                ops.blobs.push((
-                    hash.clone(),
-                    text.clone(),
-                    text.len() as i64,
-                    "user_text".into(),
-                ));
-                ops.blob_refs.push((
-                    hash.clone(),
-                    msg_id.clone(),
-                    "user_prompt".into(),
-                ));
-                ops.fts_entries.push((
-                    hash.clone(),
-                    "user_text".into(),
-                    text.clone(),
-                ));
-            }
+            ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "user_text".into()));
+            ops.blob_refs.push((hash.clone(), msg_id.clone(), "user_prompt".into()));
+            ops.fts_entries.push((hash.clone(), "user_text".into(), text.clone()));
             ops.content_blocks.push(ContentBlockRow {
                 message_id: msg_id.clone(),
                 block_index: 0,
                 block_type: "text".into(),
-                content_hash: if stored { Some(hash) } else { None },
+                content_hash: Some(hash),
                 tool_name: None,
                 tool_use_id: None,
                 tool_input_hash: None,
@@ -245,53 +168,29 @@ pub fn handle_user(
                     } => {
                         let content_str = serde_json::to_string(result_content).unwrap_or_default();
                         let hash = content::hash_content(&content_str);
-                        let stored = content::should_dedup(&content_str);
+                        let content_len = content_str.len() as i64;
+                        ops.blobs.push((hash.clone(), content_str.clone(), content_len, "tool_output".into()));
+                        ops.blob_refs.push((hash.clone(), msg_id.clone(), "tool_result".into()));
+                        ops.fts_entries.push((hash.clone(), "tool_output".into(), content_str));
+                        ops.tool_output_links.push((tool_use_id.clone(), hash.clone()));
 
-                        if stored {
-                            ops.blobs.push((
-                                hash.clone(),
-                                content_str.clone(),
-                                content_str.len() as i64,
-                                "tool_output".into(),
-                            ));
-                            ops.blob_refs.push((
-                                hash.clone(),
-                                msg_id.clone(),
-                                "tool_result".into(),
-                            ));
-                            ops.fts_entries.push((
-                                hash.clone(),
-                                "tool_output".into(),
-                                content_str,
-                            ));
-
-                            // Only link output when blob exists (FK constraint)
-                            ops.tool_output_links.push((
-                                tool_use_id.clone(),
-                                hash.clone(),
-                            ));
-                        }
-
-                        // Check ToolUseTracker for file reference
                         if let Some((_tool_name, file_path, operation)) =
                             tracker.resolve_tool_result(tool_use_id)
                         {
-                            if stored {
-                                ops.file_refs.push(FileRefRow {
-                                    file_path,
-                                    content_hash: hash.clone(),
-                                    session_id: session_id.clone(),
-                                    message_id: msg_id.clone(),
-                                    operation,
-                                });
-                            }
+                            ops.file_refs.push(FileRefRow {
+                                file_path,
+                                content_hash: hash.clone(),
+                                session_id: session_id.clone(),
+                                message_id: msg_id.clone(),
+                                operation,
+                            });
                         }
 
                         ops.content_blocks.push(ContentBlockRow {
                             message_id: msg_id.clone(),
                             block_index: idx as i64,
                             block_type: "tool_result".into(),
-                            content_hash: if stored { Some(hash) } else { None },
+                            content_hash: Some(hash),
                             tool_name: None,
                             tool_use_id: Some(tool_use_id.clone()),
                             tool_input_hash: None,
@@ -299,28 +198,13 @@ pub fn handle_user(
                     }
                     ContentBlock::Text { text } => {
                         let hash = content::hash_content(text);
-                        if content::should_dedup(text) {
-                            ops.blobs.push((
-                                hash.clone(),
-                                text.clone(),
-                                text.len() as i64,
-                                "user_text".into(),
-                            ));
-                            ops.fts_entries.push((
-                                hash.clone(),
-                                "user_text".into(),
-                                text.clone(),
-                            ));
-                        }
+                        ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "user_text".into()));
+                        ops.fts_entries.push((hash.clone(), "user_text".into(), text.clone()));
                         ops.content_blocks.push(ContentBlockRow {
                             message_id: msg_id.clone(),
                             block_index: idx as i64,
                             block_type: "text".into(),
-                            content_hash: if content::should_dedup(text) {
-                                Some(hash)
-                            } else {
-                                None
-                            },
+                            content_hash: Some(hash),
                             tool_name: None,
                             tool_use_id: None,
                             tool_input_hash: None,
@@ -355,21 +239,13 @@ pub fn handle_system(envelope: &SystemEnvelope) -> LineOps {
 
     if let Some(content) = &envelope.content {
         let hash = content::hash_content(content);
-        let stored = content::should_dedup(content);
-        if stored {
-            ops.blobs.push((
-                hash.clone(),
-                content.clone(),
-                content.len() as i64,
-                "system".into(),
-            ));
-            ops.fts_entries.push((hash.clone(), "system".into(), content.clone()));
-        }
+        ops.blobs.push((hash.clone(), content.clone(), content.len() as i64, "system".into()));
+        ops.fts_entries.push((hash.clone(), "system".into(), content.clone()));
         ops.content_blocks.push(ContentBlockRow {
             message_id: envelope.uuid.clone(),
             block_index: 0,
             block_type: "text".into(),
-            content_hash: if stored { Some(hash) } else { None },
+            content_hash: Some(hash),
             tool_name: None,
             tool_use_id: None,
             tool_input_hash: None,
@@ -404,20 +280,18 @@ pub fn handle_summary(envelope: &SummaryEnvelope, session_id: &str) -> LineOps {
     });
 
     let hash = content::hash_content(&envelope.summary);
-    if content::should_dedup(&envelope.summary) {
-        ops.blobs.push((
-            hash.clone(),
-            envelope.summary.clone(),
-            envelope.summary.len() as i64,
-            "summary".into(),
-        ));
-        ops.blob_refs.push((
-            hash.clone(),
-            synthetic_id,
-            "summary".into(),
-        ));
-        ops.fts_entries.push((hash, "summary".into(), envelope.summary.clone()));
-    }
+    ops.blobs.push((hash.clone(), envelope.summary.clone(), envelope.summary.len() as i64, "summary".into()));
+    ops.blob_refs.push((hash.clone(), synthetic_id.clone(), "summary".into()));
+    ops.fts_entries.push((hash.clone(), "summary".into(), envelope.summary.clone()));
+    ops.content_blocks.push(ContentBlockRow {
+        message_id: synthetic_id,
+        block_index: 0,
+        block_type: "text".into(),
+        content_hash: Some(hash),
+        tool_name: None,
+        tool_use_id: None,
+        tool_input_hash: None,
+    });
 
     ops
 }

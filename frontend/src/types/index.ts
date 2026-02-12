@@ -199,3 +199,36 @@ export interface ContentBlob {
   size: number
   kind: string
 }
+
+export type IndexerStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
+
+export interface IndexProgress {
+  phase: string
+  files_total: number
+  files_done: number
+  messages_processed: number
+  blobs_inserted: number
+}
+
+export interface IndexReport {
+  sessions_parsed: number
+  messages_processed: number
+  messages_skipped: number
+  parse_errors: number
+  blobs_inserted: number
+  tool_calls_inserted: number
+  tasks_parsed: number
+  facets_parsed: number
+  plans_parsed: number
+  history_entries: number
+  files_processed: number
+  files_unchanged: number
+  elapsed_secs: number
+}
+
+export interface IndexerStatusResponse {
+  status: IndexerStatus
+  progress: IndexProgress
+  latest_report: IndexReport | null
+  error_message: string | null
+}

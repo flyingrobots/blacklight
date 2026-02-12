@@ -9,22 +9,47 @@ pub mod sessions;
 pub mod structured;
 
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use change::FileStatus;
 use scanner::FileKind;
 
+use crate::notifications::{self, NotificationLevel, NotificationSender};
+
 /// Configuration for an index run.
 pub struct IndexConfig {
     pub claude_dir: PathBuf,
+    /// Additional directories to scan (e.g. Claude Desktop agent-mode sessions).
+    pub extra_dirs: Vec<PathBuf>,
     pub db_path: PathBuf,
     pub full: bool,
     pub verbose: bool,
+    /// Shared progress tracker (updated during indexing).
+    pub progress: Option<Arc<Mutex<IndexProgress>>>,
+    /// Cancellation flag (checked between phases and files).
+    pub cancel_flag: Option<Arc<AtomicBool>>,
+    /// Pause flag (spins between phases and files while true).
+    pub pause_flag: Option<Arc<AtomicBool>>,
+    /// Notification channel for pushing warnings/info to the frontend.
+    pub notify_tx: Option<NotificationSender>,
+}
+
+/// Live progress information updated during indexing.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct IndexProgress {
+    pub phase: String,
+    pub files_total: usize,
+    pub files_done: usize,
+    pub messages_processed: usize,
+    pub blobs_inserted: usize,
 }
 
 /// Report produced after indexing completes.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct IndexReport {
     pub sessions_parsed: usize,
     pub messages_processed: usize,
@@ -59,20 +84,89 @@ impl std::fmt::Display for IndexReport {
     }
 }
 
+fn update_progress(progress: &Option<Arc<Mutex<IndexProgress>>>, f: impl FnOnce(&mut IndexProgress)) {
+    if let Some(p) = progress {
+        if let Ok(mut guard) = p.lock() {
+            f(&mut guard);
+        }
+    }
+}
+
+fn is_cancelled(cancel_flag: &Option<Arc<AtomicBool>>) -> bool {
+    cancel_flag
+        .as_ref()
+        .is_some_and(|f| f.load(Ordering::Relaxed))
+}
+
+/// Spin-wait while pause_flag is true. Breaks early if cancel_flag fires.
+fn wait_if_paused(config: &IndexConfig) {
+    if let Some(pause) = &config.pause_flag {
+        while pause.load(Ordering::Relaxed) {
+            if is_cancelled(&config.cancel_flag) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+}
+
+fn notify_warn(config: &IndexConfig, msg: impl Into<String>) {
+    if let Some(tx) = &config.notify_tx {
+        notifications::notify(tx, NotificationLevel::Warn, msg);
+    }
+}
+
+fn notify_info(config: &IndexConfig, msg: impl Into<String>) {
+    if let Some(tx) = &config.notify_tx {
+        notifications::notify(tx, NotificationLevel::Info, msg);
+    }
+}
+
 /// Main entry point: run the full indexing pipeline.
 pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
     let start = Instant::now();
     let mut report = IndexReport::default();
+    let progress = config.progress.clone();
+    let cancel_flag = config.cancel_flag.clone();
+
+    update_progress(&progress, |p| p.phase = "Scanning".to_string());
 
     tracing::info!("indexing {} → {}", config.claude_dir.display(), config.db_path.display());
+    notify_info(&config, "Indexing started");
 
     // 1. Open database
     let conn = crate::db::open(&config.db_path)
         .context("failed to open database")?;
 
-    // 2. Scan filesystem
-    let manifest = scanner::scan(&config.claude_dir)
+    // 2. Scan filesystem (primary + extra dirs)
+    let mut manifest = scanner::scan(&config.claude_dir)
         .with_context(|| format!("failed to scan {}", config.claude_dir.display()))?;
+
+    for extra in &config.extra_dirs {
+        if extra.exists() {
+            tracing::info!("scanning extra source: {}", extra.display());
+            match scanner::scan(extra) {
+                Ok(entries) => manifest.extend(entries),
+                Err(e) => {
+                    let msg = format!("Failed to scan {}: {e}", extra.display());
+                    tracing::warn!("{msg}");
+                    notify_warn(&config, msg);
+                }
+            }
+        }
+    }
+    // Re-sort after merging
+    if !config.extra_dirs.is_empty() {
+        manifest.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.path.cmp(&b.path)));
+        tracing::info!("total files after merging extra sources: {}", manifest.len());
+    }
+
+    wait_if_paused(&config);
+    if is_cancelled(&cancel_flag) {
+        return Ok(report);
+    }
+
+    update_progress(&progress, |p| p.phase = "Detecting changes".to_string());
 
     // 3. Change detection (or treat all as New if --full)
     let plan = if config.full {
@@ -121,17 +215,41 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         }
     }
 
+    wait_if_paused(&config);
+    if is_cancelled(&cancel_flag) {
+        return Ok(report);
+    }
+
     // Phase 1: Parse sessions-index.json files (must come first for FK ordering)
     tracing::info!("phase 1: parsing {} session index files", session_indexes.len());
+    update_progress(&progress, |p| {
+        p.phase = "Phase 1: Session indexes".to_string();
+        p.files_total = session_indexes.len();
+        p.files_done = 0;
+    });
     for (entry, _status) in &session_indexes {
         match sessions::parse_session_index(&conn, &entry.path) {
             Ok(count) => report.sessions_parsed += count,
-            Err(e) => tracing::warn!("failed to parse {}: {e}", entry.path.display()),
+            Err(e) => {
+                let msg = format!("Failed to parse {}: {e}", entry.path.display());
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
         }
+    }
+
+    wait_if_paused(&config);
+    if is_cancelled(&cancel_flag) {
+        return Ok(report);
     }
 
     // Phase 2: Stream JSONL files
     tracing::info!("phase 2: streaming {} JSONL files", session_jsonls.len());
+    update_progress(&progress, |p| {
+        p.phase = "Phase 2: JSONL files".to_string();
+        p.files_total = session_jsonls.len();
+        p.files_done = 0;
+    });
     for (entry, status) in &session_jsonls {
         let start_offset = match status {
             FileStatus::Modified { last_byte_offset } => *last_byte_offset,
@@ -156,20 +274,45 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
                 report.files_processed += 1;
             }
             Err(e) => {
-                tracing::warn!("failed to process {}: {e:#}", entry.path.display());
+                let msg = format!("Failed to process {}: {e:#}", entry.path.display());
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
             }
         }
+
+        update_progress(&progress, |p| {
+            p.files_done += 1;
+            p.messages_processed = report.messages_processed;
+            p.blobs_inserted = report.blobs_inserted;
+        });
+
+        wait_if_paused(&config);
+        if is_cancelled(&cancel_flag) {
+            return Ok(report);
+        }
+    }
+
+    wait_if_paused(&config);
+    if is_cancelled(&cancel_flag) {
+        return Ok(report);
     }
 
     // Phase 3: Structured data
     tracing::info!("phase 3: parsing structured data");
+    update_progress(&progress, |p| {
+        p.phase = "Phase 3: Structured data".to_string();
+    });
 
     // Tasks
     if !task_files.is_empty() {
         let entries: Vec<_> = task_files.iter().map(|(e, _)| e.clone()).collect();
         match structured::parse_tasks(&conn, &entries) {
             Ok(count) => report.tasks_parsed = count,
-            Err(e) => tracing::warn!("failed to parse tasks: {e}"),
+            Err(e) => {
+                let msg = format!("Failed to parse tasks: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
         }
     }
 
@@ -178,7 +321,11 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         let entries: Vec<_> = facet_files.iter().map(|(e, _)| e.clone()).collect();
         match structured::parse_facets(&conn, &entries) {
             Ok(count) => report.facets_parsed = count,
-            Err(e) => tracing::warn!("failed to parse facets: {e}"),
+            Err(e) => {
+                let msg = format!("Failed to parse facets: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
         }
     }
 
@@ -186,7 +333,11 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
     if let Some((entry, _)) = &stats_cache_path {
         match structured::parse_stats_cache(&conn, &entry.path) {
             Ok(()) => {}
-            Err(e) => tracing::warn!("failed to parse stats-cache: {e}"),
+            Err(e) => {
+                let msg = format!("Failed to parse stats-cache: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
         }
     }
 
@@ -195,7 +346,11 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         let entries: Vec<_> = plan_files.iter().map(|(e, _)| e.clone()).collect();
         match structured::parse_plans(&conn, &entries) {
             Ok(count) => report.plans_parsed = count,
-            Err(e) => tracing::warn!("failed to parse plans: {e}"),
+            Err(e) => {
+                let msg = format!("Failed to parse plans: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
         }
     }
 
@@ -203,7 +358,11 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
     if let Some((entry, _)) = &history_path {
         match structured::parse_history(&conn, &entry.path) {
             Ok(count) => report.history_entries = count,
-            Err(e) => tracing::warn!("failed to parse history: {e}"),
+            Err(e) => {
+                let msg = format!("Failed to parse history: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
         }
     }
 
@@ -228,11 +387,25 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
 
     report.elapsed_secs = start.elapsed().as_secs_f64();
 
+    update_progress(&progress, |p| {
+        p.phase = "Done".to_string();
+        p.messages_processed = report.messages_processed;
+        p.blobs_inserted = report.blobs_inserted;
+    });
+
     // Log DB size
     let db_size = std::fs::metadata(&config.db_path)
         .map(|m| m.len())
         .unwrap_or(0);
     tracing::info!("database size: {:.1} MB", db_size as f64 / 1_048_576.0);
+
+    notify_info(
+        &config,
+        format!(
+            "Indexing complete: {} sessions, {} messages in {:.1}s",
+            report.sessions_parsed, report.messages_processed, report.elapsed_secs
+        ),
+    );
 
     Ok(report)
 }

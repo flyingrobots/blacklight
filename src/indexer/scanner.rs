@@ -2,6 +2,61 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Discover additional Claude data directories beyond ~/.claude/.
+/// Currently finds Claude Desktop local-agent-mode session .claude/ dirs.
+pub fn discover_extra_sources() -> Vec<PathBuf> {
+    let mut extras = Vec::new();
+
+    // Claude Desktop: ~/Library/Application Support/Claude/local-agent-mode-sessions/
+    if let Some(home) = dirs::home_dir() {
+        let agent_sessions = home
+            .join("Library/Application Support/Claude/local-agent-mode-sessions");
+        if agent_sessions.exists() {
+            // Each session has: {org}/{conv}/local_{id}/.claude/
+            // Walk two levels deep to find .claude directories
+            if let Ok(entries) = find_nested_claude_dirs(&agent_sessions) {
+                tracing::info!(
+                    "discovered {} agent-mode .claude/ dirs in {}",
+                    entries.len(),
+                    agent_sessions.display()
+                );
+                extras.extend(entries);
+            }
+        }
+    }
+
+    extras
+}
+
+/// Recursively find `.claude` directories under a root (up to 4 levels deep).
+fn find_nested_claude_dirs(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut results = Vec::new();
+    find_claude_dirs_recursive(root, 0, 4, &mut results);
+    Ok(results)
+}
+
+fn find_claude_dirs_recursive(dir: &Path, depth: u32, max_depth: u32, results: &mut Vec<PathBuf>) {
+    if depth > max_depth {
+        return;
+    }
+    let read_dir = match fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return,
+    };
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        if name == ".claude" {
+            results.push(path);
+        } else {
+            find_claude_dirs_recursive(&path, depth + 1, max_depth, results);
+        }
+    }
+}
+
 /// Classification of files found under ~/.claude/
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FileKind {

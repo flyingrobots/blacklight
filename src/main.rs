@@ -106,11 +106,17 @@ fn main() {
             let claude_dir = source.or(cli.claude_dir)
                 .unwrap_or_else(|| dirs::home_dir().unwrap().join(".claude"));
             let db_path = cli.db.unwrap_or_else(blacklight::db::default_db_path);
+            let extra_dirs = blacklight::indexer::scanner::discover_extra_sources();
             match indexer::run_index(indexer::IndexConfig {
                 claude_dir,
+                extra_dirs,
                 db_path,
                 full,
                 verbose,
+                progress: None,
+                cancel_flag: None,
+                pause_flag: None,
+                notify_tx: None,
             }) {
                 Ok(report) => print!("{report}"),
                 Err(e) => {

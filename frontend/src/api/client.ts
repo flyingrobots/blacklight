@@ -3,7 +3,7 @@ import type {
   ToolCallDetail, FileReference, SearchHit, AnalyticsOverview,
   DailyStats, ModelUsage, ToolFrequency, ProjectBreakdown,
   ProjectDetail, OutcomeStats, StorageOverview, ContentBlob,
-  IndexCoverage
+  IndexCoverage, IndexerStatusResponse
 } from '@/types'
 
 const BASE = '/api'
@@ -21,6 +21,19 @@ async function get<T>(path: string, params?: Record<string, string | number | un
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(body.error || res.statusText)
+  }
+  return res.json()
+}
+
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(new URL(path, window.location.origin).toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(data.error || res.statusText)
   }
   return res.json()
 }
@@ -76,4 +89,12 @@ export const api = {
     get<Paginated<FileReference>>(`${BASE}/files`, params),
 
   storage: () => get<StorageOverview>(`${BASE}/storage`),
+
+  indexer: {
+    status: () => get<IndexerStatusResponse>(`${BASE}/indexer/status`),
+    start: (full = false) => post<unknown>(`${BASE}/indexer/start`, { full }),
+    stop: () => post<unknown>(`${BASE}/indexer/stop`),
+    pause: () => post<unknown>(`${BASE}/indexer/pause`),
+    resume: () => post<unknown>(`${BASE}/indexer/resume`),
+  },
 }

@@ -11,7 +11,8 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use state::{AppState, DbPool};
+use crate::notifications;
+use state::{AppState, DbPool, IndexerState};
 
 /// Start the web server on the given port.
 pub async fn start_server(
@@ -24,6 +25,8 @@ pub async fn start_server(
     let state = AppState {
         db: Arc::new(pool),
         source_dir: source_dir.to_path_buf(),
+        indexer: Arc::new(tokio::sync::Mutex::new(IndexerState::default())),
+        notifications: notifications::create_channel(),
     };
 
     let app = router::build_router(state);

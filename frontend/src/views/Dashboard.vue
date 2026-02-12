@@ -159,12 +159,14 @@ onMounted(async () => {
     coverage.value = cov
     dailyStats.value = daily
     recentSessions.value = sessions.items
+
   } catch (e: any) {
     error.value = e.message
   } finally {
     loading.value = false
   }
 })
+
 </script>
 
 <style scoped>
@@ -249,4 +251,5 @@ onMounted(async () => {
 
 .loading, .error { padding: 2rem; text-align: center; }
 .error { color: var(--danger); }
+
 </style>

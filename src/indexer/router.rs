@@ -34,7 +34,7 @@ pub fn process_jsonl(
     let mut stats = RouterStats::default();
     let mut batch: Vec<LineOps> = Vec::with_capacity(BATCH_SIZE);
     let mut tracker = ToolUseTracker::new();
-    let mut session_id: Option<String> = None;
+    let mut seen_sessions: std::collections::HashSet<String> = std::collections::HashSet::new();
     let source_file = path.to_string_lossy().to_string();
 
     // Derive session_id from filename as fallback (the JSONL filename is the session UUID)
@@ -67,9 +67,7 @@ pub fn process_jsonl(
 
         let ops = match &msg {
             SessionMessage::Assistant(envelope) => {
-                // Ensure session exists on first message
-                if session_id.is_none() {
-                    session_id = Some(envelope.session_id.clone());
+                if seen_sessions.insert(envelope.session_id.clone()) {
                     ensure_session(
                         conn,
                         &envelope.session_id,
@@ -85,8 +83,7 @@ pub fn process_jsonl(
                 handlers::handle_assistant(envelope, &mut tracker)
             }
             SessionMessage::User(envelope) => {
-                if session_id.is_none() {
-                    session_id = Some(envelope.session_id.clone());
+                if seen_sessions.insert(envelope.session_id.clone()) {
                     ensure_session(
                         conn,
                         &envelope.session_id,
@@ -102,8 +99,7 @@ pub fn process_jsonl(
                 handlers::handle_user(envelope, &mut tracker)
             }
             SessionMessage::System(envelope) => {
-                if session_id.is_none() {
-                    session_id = Some(envelope.session_id.clone());
+                if seen_sessions.insert(envelope.session_id.clone()) {
                     ensure_session(
                         conn,
                         &envelope.session_id,
@@ -116,10 +112,9 @@ pub fn process_jsonl(
                 handlers::handle_system(envelope)
             }
             SessionMessage::Summary(envelope) => {
-                // Ensure session exists for summaries (they can appear before user/assistant msgs)
-                if session_id.is_none() {
-                    if let Some(fsid) = &filename_session_id {
-                        session_id = Some(fsid.clone());
+                // Ensure session exists for summaries using filename-derived ID
+                if let Some(fsid) = &filename_session_id {
+                    if seen_sessions.insert(fsid.clone()) {
                         ensure_session(
                             conn,
                             fsid,
@@ -130,8 +125,9 @@ pub fn process_jsonl(
                         )?;
                     }
                 }
-                let sid = session_id
+                let sid = filename_session_id
                     .as_deref()
+                    .or(seen_sessions.iter().next().map(|s| s.as_str()))
                     .unwrap_or("unknown");
                 handlers::handle_summary(envelope, sid)
             }

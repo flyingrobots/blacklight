@@ -1,7 +1,9 @@
 pub mod analytics;
 pub mod content;
 pub mod files;
+pub mod indexer;
 pub mod projects;
 pub mod search;
 pub mod sessions;
 pub mod storage;
+pub mod ws;

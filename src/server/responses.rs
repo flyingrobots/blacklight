@@ -1,5 +1,17 @@
 use serde::Serialize;
 
+use crate::indexer::{IndexProgress, IndexReport};
+use crate::server::state::IndexerStatus;
+
+/// Indexer status response.
+#[derive(Debug, Serialize)]
+pub struct IndexerStatusResponse {
+    pub status: IndexerStatus,
+    pub progress: IndexProgress,
+    pub latest_report: Option<IndexReport>,
+    pub error_message: Option<String>,
+}
+
 /// Paginated response wrapper.
 #[derive(Debug, Serialize)]
 pub struct Paginated<T: Serialize> {

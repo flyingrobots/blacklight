@@ -556,9 +556,14 @@ fn test_realistic_multi_session_index() {
     // ===== RUN THE INDEXER =====
     let report = indexer::run_index(IndexConfig {
         claude_dir: claude_dir.clone(),
+        extra_dirs: vec![],
         db_path: db_path.clone(),
         full: false,
         verbose: true,
+        progress: None,
+        cancel_flag: None,
+        pause_flag: None,
+        notify_tx: None,
     })
     .unwrap();
 
@@ -868,9 +873,14 @@ fn test_incremental_index() {
     // First run
     let r1 = indexer::run_index(IndexConfig {
         claude_dir: claude_dir.clone(),
+        extra_dirs: vec![],
         db_path: db_path.clone(),
         full: false,
         verbose: false,
+        progress: None,
+        cancel_flag: None,
+        pause_flag: None,
+        notify_tx: None,
     })
     .unwrap();
     assert!(r1.files_processed > 0);
@@ -879,9 +889,14 @@ fn test_incremental_index() {
     // Second run — nothing should change
     let r2 = indexer::run_index(IndexConfig {
         claude_dir,
+        extra_dirs: vec![],
         db_path,
         full: false,
         verbose: false,
+        progress: None,
+        cancel_flag: None,
+        pause_flag: None,
+        notify_tx: None,
     })
     .unwrap();
     assert_eq!(r2.files_processed, 0, "second run should process 0 files");
@@ -919,9 +934,14 @@ fn test_fts_search_after_indexing() {
 
     let report = indexer::run_index(IndexConfig {
         claude_dir,
+        extra_dirs: vec![],
         db_path: db_path.clone(),
         full: false,
         verbose: false,
+        progress: None,
+        cancel_flag: None,
+        pause_flag: None,
+        notify_tx: None,
     })
     .unwrap();
     assert_eq!(report.plans_parsed, 1);
@@ -970,9 +990,14 @@ fn test_full_reindex() {
     // First run
     let r1 = indexer::run_index(IndexConfig {
         claude_dir: claude_dir.clone(),
+        extra_dirs: vec![],
         db_path: db_path.clone(),
         full: false,
         verbose: false,
+        progress: None,
+        cancel_flag: None,
+        pause_flag: None,
+        notify_tx: None,
     })
     .unwrap();
     assert!(r1.files_processed > 0);
@@ -980,9 +1005,14 @@ fn test_full_reindex() {
     // Second run with --full
     let r2 = indexer::run_index(IndexConfig {
         claude_dir,
+        extra_dirs: vec![],
         db_path,
         full: true,
         verbose: false,
+        progress: None,
+        cancel_flag: None,
+        pause_flag: None,
+        notify_tx: None,
     })
     .unwrap();
     assert!(
@@ -1024,9 +1054,14 @@ fn test_summary_first_in_jsonl() {
 
     let report = indexer::run_index(IndexConfig {
         claude_dir,
+        extra_dirs: vec![],
         db_path: db_path.clone(),
         full: false,
         verbose: false,
+        progress: None,
+        cancel_flag: None,
+        pause_flag: None,
+        notify_tx: None,
     })
     .unwrap();
 

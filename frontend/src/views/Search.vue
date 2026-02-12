@@ -37,12 +37,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { api } from '@/api/client'
 import type { SearchHit } from '@/types'
 import SearchResult from '@/components/SearchResult.vue'
 
+const route = useRoute()
 const query = ref('')
+
+// Pick up ?q= from URL (e.g. from header search)
+onMounted(() => {
+  const q = route.query.q as string
+  if (q) {
+    query.value = q
+    doSearch()
+  }
+})
+
+watch(() => route.query.q, (q) => {
+  if (q && typeof q === 'string' && q !== query.value) {
+    query.value = q
+    offset.value = 0
+    doSearch()
+  }
+})
 const kindFilter = ref('')
 const results = ref<SearchHit[]>([])
 const total = ref(0)
