@@ -35,7 +35,39 @@ pub fn handle_assistant(
         duration_ms: None,
     });
 
-    if let ContentValue::Blocks(blocks) = &envelope.message.content {
+    match &envelope.message.content {
+        ContentValue::Text(text) => {
+            let hash = content::hash_content(text);
+            let stored = content::should_dedup(text);
+            if stored {
+                ops.blobs.push((
+                    hash.clone(),
+                    text.clone(),
+                    text.len() as i64,
+                    "text".into(),
+                ));
+                ops.blob_refs.push((
+                    hash.clone(),
+                    msg_id.clone(),
+                    "response_text".into(),
+                ));
+                ops.fts_entries.push((
+                    hash.clone(),
+                    "text".into(),
+                    text.clone(),
+                ));
+            }
+            ops.content_blocks.push(ContentBlockRow {
+                message_id: msg_id.clone(),
+                block_index: 0,
+                block_type: "text".into(),
+                content_hash: if stored { Some(hash) } else { None },
+                tool_name: None,
+                tool_use_id: None,
+                tool_input_hash: None,
+            });
+        }
+        ContentValue::Blocks(blocks) => {
         for (idx, block) in blocks.iter().enumerate() {
             match block {
                 ContentBlock::Text { text } => {
@@ -144,6 +176,7 @@ pub fn handle_assistant(
                 }
             }
         }
+        }
     }
 
     ops
@@ -174,7 +207,8 @@ pub fn handle_user(
     match &envelope.message.content {
         ContentValue::Text(text) => {
             let hash = content::hash_content(text);
-            if content::should_dedup(text) {
+            let stored = content::should_dedup(text);
+            if stored {
                 ops.blobs.push((
                     hash.clone(),
                     text.clone(),
@@ -192,6 +226,15 @@ pub fn handle_user(
                     text.clone(),
                 ));
             }
+            ops.content_blocks.push(ContentBlockRow {
+                message_id: msg_id.clone(),
+                block_index: 0,
+                block_type: "text".into(),
+                content_hash: if stored { Some(hash) } else { None },
+                tool_name: None,
+                tool_use_id: None,
+                tool_input_hash: None,
+            });
         }
         ContentValue::Blocks(blocks) => {
             for (idx, block) in blocks.iter().enumerate() {
@@ -312,15 +355,25 @@ pub fn handle_system(envelope: &SystemEnvelope) -> LineOps {
 
     if let Some(content) = &envelope.content {
         let hash = content::hash_content(content);
-        if content::should_dedup(content) {
+        let stored = content::should_dedup(content);
+        if stored {
             ops.blobs.push((
                 hash.clone(),
                 content.clone(),
                 content.len() as i64,
                 "system".into(),
             ));
-            ops.fts_entries.push((hash, "system".into(), content.clone()));
+            ops.fts_entries.push((hash.clone(), "system".into(), content.clone()));
         }
+        ops.content_blocks.push(ContentBlockRow {
+            message_id: envelope.uuid.clone(),
+            block_index: 0,
+            block_type: "text".into(),
+            content_hash: if stored { Some(hash) } else { None },
+            tool_name: None,
+            tool_use_id: None,
+            tool_input_hash: None,
+        });
     }
 
     ops
