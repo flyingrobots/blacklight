@@ -150,19 +150,32 @@ pub fn get_tool_frequency(conn: &Connection, limit: i64) -> Result<Vec<ToolFrequ
 }
 
 pub fn get_project_breakdown(conn: &Connection) -> Result<Vec<ProjectBreakdown>> {
-    // Use subqueries to avoid cross-product explosion from multi-table JOINs
+    // Pre-aggregate each table separately via CTEs to avoid cross-product explosion.
     let mut stmt = conn.prepare(
-        "SELECT s.project_slug,
-                COUNT(*) as session_count,
-                (SELECT COUNT(*) FROM messages m
-                 WHERE m.session_id IN (SELECT id FROM sessions WHERE project_slug = s.project_slug)
-                ) as message_count,
-                (SELECT COUNT(*) FROM tool_calls tc
-                 WHERE tc.session_id IN (SELECT id FROM sessions WHERE project_slug = s.project_slug)
-                ) as tool_call_count
-         FROM sessions s
-         GROUP BY s.project_slug
-         ORDER BY session_count DESC",
+        "WITH sess AS (
+           SELECT project_slug, COUNT(*) as session_count
+           FROM sessions
+           GROUP BY project_slug
+         ),
+         msg AS (
+           SELECT s.project_slug, COUNT(*) as message_count
+           FROM messages m
+           JOIN sessions s ON s.id = m.session_id
+           GROUP BY s.project_slug
+         ),
+         tc AS (
+           SELECT s.project_slug, COUNT(*) as tool_call_count
+           FROM tool_calls t
+           JOIN sessions s ON s.id = t.session_id
+           GROUP BY s.project_slug
+         )
+         SELECT sess.project_slug, sess.session_count,
+                COALESCE(msg.message_count, 0),
+                COALESCE(tc.tool_call_count, 0)
+         FROM sess
+         LEFT JOIN msg ON msg.project_slug = sess.project_slug
+         LEFT JOIN tc ON tc.project_slug = sess.project_slug
+         ORDER BY sess.session_count DESC",
     )?;
 
     let items = stmt
