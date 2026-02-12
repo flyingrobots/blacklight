@@ -4,7 +4,7 @@
       <span class="project">{{ session.project_slug }}</span>
       <span class="date">{{ new Date(session.modified_at).toLocaleDateString() }}</span>
     </div>
-    <div class="prompt">{{ session.first_prompt?.slice(0, 120) || 'No prompt' }}{{ (session.first_prompt?.length ?? 0) > 120 ? '...' : '' }}</div>
+    <div class="prompt" :class="{ faded: !displayText.primary }">{{ displayText.text }}</div>
     <div class="card-footer">
       <span v-if="session.message_count" class="meta">{{ session.message_count }} msgs</span>
       <span v-if="session.git_branch" class="meta branch">{{ session.git_branch }}</span>
@@ -14,9 +14,19 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SessionSummary } from '@/types'
 
-defineProps<{ session: SessionSummary }>()
+const props = defineProps<{ session: SessionSummary }>()
+
+const displayText = computed(() => {
+  const s = props.session
+  const truncate = (t: string) => t.length > 120 ? t.slice(0, 120) + '...' : t
+  if (s.first_prompt) return { text: truncate(s.first_prompt), primary: true }
+  if (s.brief_summary) return { text: truncate(s.brief_summary), primary: true }
+  if (s.summary) return { text: truncate(s.summary), primary: true }
+  return { text: `${s.message_count ?? 0} messages in ${s.project_slug}`, primary: false }
+})
 </script>
 
 <style scoped>
@@ -46,6 +56,7 @@ defineProps<{ session: SessionSummary }>()
 }
 .date { font-size: 0.75rem; color: var(--text-secondary); }
 .prompt { font-size: 0.875rem; line-height: 1.4; margin-bottom: 0.5rem; }
+.prompt.faded { color: var(--text-secondary); font-style: italic; }
 .card-footer { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 .meta {
   font-size: 0.75rem;
