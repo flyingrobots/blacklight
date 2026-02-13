@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::enrich::EnrichReport;
+use crate::enrich::{EnrichProgress, EnrichReport};
 use crate::indexer::{IndexProgress, IndexReport};
 use crate::notifications::NotificationSender;
 
@@ -87,6 +87,7 @@ pub struct IndexerState {
     pub pause_flag: Arc<AtomicBool>,
     pub latest_report: Option<IndexReport>,
     pub error_message: Option<String>,
+    pub log_lines: Arc<Mutex<Vec<String>>>,
 }
 
 impl Default for IndexerState {
@@ -98,6 +99,7 @@ impl Default for IndexerState {
             pause_flag: Arc::new(AtomicBool::new(false)),
             latest_report: None,
             error_message: None,
+            log_lines: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -111,6 +113,7 @@ impl IndexerState {
         *self.progress.lock().unwrap() = IndexProgress::default();
         self.latest_report = None;
         self.error_message = None;
+        self.log_lines.lock().unwrap().clear();
     }
 }
 
@@ -130,11 +133,10 @@ pub enum EnricherStatus {
 pub struct EnricherState {
     pub status: EnricherStatus,
     pub cancel_flag: Arc<AtomicBool>,
-    pub sessions_total: usize,
-    pub sessions_done: usize,
-    pub sessions_failed: usize,
+    pub progress: Arc<EnrichProgress>,
     pub latest_report: Option<EnrichReport>,
     pub error_message: Option<String>,
+    pub log_lines: Arc<Mutex<Vec<String>>>,
 }
 
 impl Default for EnricherState {
@@ -142,11 +144,10 @@ impl Default for EnricherState {
         Self {
             status: EnricherStatus::Idle,
             cancel_flag: Arc::new(AtomicBool::new(false)),
-            sessions_total: 0,
-            sessions_done: 0,
-            sessions_failed: 0,
+            progress: Arc::new(EnrichProgress::default()),
             latest_report: None,
             error_message: None,
+            log_lines: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -156,11 +157,10 @@ impl EnricherState {
     pub fn reset_for_run(&mut self) {
         self.status = EnricherStatus::Running;
         self.cancel_flag.store(false, Ordering::Relaxed);
-        self.sessions_total = 0;
-        self.sessions_done = 0;
-        self.sessions_failed = 0;
+        self.progress = Arc::new(EnrichProgress::default());
         self.latest_report = None;
         self.error_message = None;
+        self.log_lines.lock().unwrap().clear();
     }
 }
 

@@ -3,6 +3,9 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
+use std::sync::atomic::Ordering;
+
+use axum::extract::Path;
 
 use crate::enrich::EnrichConfig;
 use crate::notifications::{self, NotificationLevel};
@@ -16,6 +19,8 @@ pub fn routes() -> Router<AppState> {
         .route("/enrichment/start", post(start))
         .route("/enrichment/stop", post(stop))
         .route("/enrichment/pending-count", get(pending_count))
+        .route("/enrichment/logs", get(logs))
+        .route("/enrichment/session/{session_id}", post(enrich_single))
 }
 
 async fn status(
@@ -24,9 +29,9 @@ async fn status(
     let guard = state.enricher.lock().await;
     let resp = EnricherStatusResponse {
         status: guard.status.clone(),
-        sessions_total: guard.sessions_total,
-        sessions_done: guard.sessions_done,
-        sessions_failed: guard.sessions_failed,
+        sessions_total: guard.progress.total.load(Ordering::Relaxed),
+        sessions_done: guard.progress.done.load(Ordering::Relaxed),
+        sessions_failed: guard.progress.failed.load(Ordering::Relaxed),
         latest_report: guard.latest_report.clone(),
         error_message: guard.error_message.clone(),
     };
@@ -58,6 +63,9 @@ async fn start(
     }
 
     guard.reset_for_run();
+    let progress = guard.progress.clone();
+    let cancel_flag = guard.cancel_flag.clone();
+    let log_lines = guard.log_lines.clone();
 
     let enricher_state = state.enricher.clone();
     let db_path = state.db.db_path().to_path_buf();
@@ -71,18 +79,31 @@ async fn start(
         limit: params.limit,
         concurrency: params.concurrency,
         force: params.force,
+        progress: Some(progress),
+        cancel_flag: Some(cancel_flag.clone()),
+        log_lines: Some(log_lines),
     };
+
+    let cancel_flag_check = cancel_flag;
 
     tokio::spawn(async move {
         let result = crate::enrich::run_enrich(config).await;
 
         let mut guard = enricher_state.lock().await;
+        let was_cancelled = cancel_flag_check.load(Ordering::Relaxed);
         match result {
             Ok(report) => {
+                if was_cancelled {
+                    guard.status = EnricherStatus::Cancelled;
+                    notifications::notify(
+                        &notify_tx,
+                        NotificationLevel::Warn,
+                        "Enrichment cancelled",
+                    );
+                    guard.latest_report = Some(report);
+                    return;
+                }
                 guard.status = EnricherStatus::Completed;
-                guard.sessions_done = report.enriched;
-                guard.sessions_failed = report.failed;
-                guard.sessions_total = report.total_candidates;
                 notifications::notify(
                     &notify_tx,
                     NotificationLevel::Info,
@@ -136,7 +157,7 @@ async fn stop(
         return Err(AppError::bad_request("Enricher is not running"));
     }
 
-    guard.cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+    guard.cancel_flag.store(true, Ordering::Relaxed);
 
     Ok(Json(serde_json::json!({ "message": "Cancellation requested" })))
 }
@@ -150,4 +171,63 @@ async fn pending_count(
         .await?;
 
     Ok(Json(serde_json::json!({ "count": count })))
+}
+
+async fn logs(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<String>>, AppError> {
+    let guard = state.enricher.lock().await;
+    let lines = guard.log_lines.lock().unwrap().clone();
+    Ok(Json(lines))
+}
+
+/// Enrich a single session by ID (runs in background).
+async fn enrich_single(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let db_path = state.db.db_path().to_path_buf();
+
+    let sid = session_id.clone();
+    tokio::spawn(async move {
+        // Call the lower-level pieces directly for a single session.
+        let conn = match crate::db::open(&db_path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("enrich_single: failed to open DB: {e:#}");
+                return;
+            }
+        };
+
+        // Build digest for this specific session
+        let digest = match crate::enrich::build_session_digest_pub(&conn, &sid) {
+            Ok(Some(d)) => d,
+            Ok(None) => {
+                tracing::warn!("enrich_single: session {sid} has no data");
+                return;
+            }
+            Err(e) => {
+                tracing::error!("enrich_single: failed to build digest: {e:#}");
+                return;
+            }
+        };
+
+        match crate::enrich::call_claude_pub(&digest).await {
+            Ok(result) => {
+                if let Err(e) = crate::enrich::store_enrichment_pub(&conn, &sid, &result) {
+                    tracing::error!("enrich_single: failed to store: {e:#}");
+                } else {
+                    tracing::info!("enrich_single: enriched session {sid}: \"{}\"", result.title);
+                }
+            }
+            Err(e) => {
+                tracing::error!("enrich_single: claude call failed for {sid}: {e:#}");
+            }
+        }
+    });
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({ "message": "Enrichment started", "session_id": session_id })),
+    ))
 }

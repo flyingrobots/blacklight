@@ -97,6 +97,7 @@ export const api = {
     stop: () => post<unknown>(`${BASE}/indexer/stop`),
     pause: () => post<unknown>(`${BASE}/indexer/pause`),
     resume: () => post<unknown>(`${BASE}/indexer/resume`),
+    logs: () => get<string[]>(`${BASE}/indexer/logs`),
   },
 
   enrichment: {
@@ -105,6 +106,7 @@ export const api = {
       post<unknown>(`${BASE}/enrichment/start`, params ?? {}),
     stop: () => post<unknown>(`${BASE}/enrichment/stop`),
     pendingCount: () => get<{ count: number }>(`${BASE}/enrichment/pending-count`),
+    logs: () => get<string[]>(`${BASE}/enrichment/logs`),
   },
 
   review: {

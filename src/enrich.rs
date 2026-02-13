@@ -4,7 +4,26 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+/// Shared progress counters updated live during enrichment.
+#[derive(Debug)]
+pub struct EnrichProgress {
+    pub total: AtomicUsize,
+    pub done: AtomicUsize,
+    pub failed: AtomicUsize,
+}
+
+impl Default for EnrichProgress {
+    fn default() -> Self {
+        Self {
+            total: AtomicUsize::new(0),
+            done: AtomicUsize::new(0),
+            failed: AtomicUsize::new(0),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct EnrichConfig {
@@ -12,6 +31,17 @@ pub struct EnrichConfig {
     pub limit: Option<usize>,
     pub concurrency: usize,
     pub force: bool,
+    pub progress: Option<Arc<EnrichProgress>>,
+    pub cancel_flag: Option<Arc<AtomicBool>>,
+    pub log_lines: Option<Arc<Mutex<Vec<String>>>>,
+}
+
+/// Helper to push a log line to a shared buffer.
+fn push_log(log: &Option<Arc<Mutex<Vec<String>>>>, msg: String) {
+    if let Some(ref buf) = log {
+        let mut lines = buf.lock().unwrap();
+        lines.push(msg);
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -33,15 +63,15 @@ impl fmt::Display for EnrichReport {
 }
 
 #[derive(Debug, Deserialize)]
-struct EnrichmentResult {
-    title: String,
-    summary: String,
+pub struct EnrichmentResult {
+    pub title: String,
+    pub summary: String,
     #[serde(default)]
-    tags: Vec<TagResult>,
+    pub tags: Vec<TagResult>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct TagResult {
+pub struct TagResult {
     tag: String,
     confidence: f64,
 }
@@ -180,17 +210,10 @@ Session data:
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // With --output-format json, claude returns a JSON object with a "result" field
-    // Try parsing that first, then fall back to raw parsing
-    let text = if let Ok(wrapper) = serde_json::from_str::<serde_json::Value>(&stdout) {
-        if let Some(result) = wrapper.get("result").and_then(|r| r.as_str()) {
-            result.to_string()
-        } else {
-            stdout.to_string()
-        }
-    } else {
-        stdout.to_string()
-    };
+    // --output-format json produces JSONL: one JSON object per line.
+    // Lines include {"type":"system",...}, {"type":"assistant",...}, {"type":"result",...}.
+    // We need the "result" line and its "result" field which contains the actual text.
+    let text = parse_claude_jsonl_output(&stdout)?;
 
     // Try to extract JSON from the text (Claude sometimes wraps in markdown fences)
     let json_str = extract_json(&text);
@@ -199,6 +222,34 @@ Session data:
         .with_context(|| format!("failed to parse claude output as JSON: {json_str}"))?;
 
     Ok(result)
+}
+
+/// Parse JSONL output from `claude --output-format json`.
+/// Finds the `{"type":"result",...}` line and extracts its `result` field.
+fn parse_claude_jsonl_output(stdout: &str) -> Result<String> {
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
+            if val.get("type").and_then(|t| t.as_str()) == Some("result") {
+                if let Some(result) = val.get("result").and_then(|r| r.as_str()) {
+                    return Ok(result.to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: maybe it's a single JSON object (older CLI versions)
+    if let Ok(wrapper) = serde_json::from_str::<serde_json::Value>(stdout) {
+        if let Some(result) = wrapper.get("result").and_then(|r| r.as_str()) {
+            return Ok(result.to_string());
+        }
+    }
+
+    // Last resort: treat entire stdout as the response text
+    Ok(stdout.to_string())
 }
 
 /// Extract a JSON object from text that may contain markdown fences.
@@ -341,23 +392,45 @@ pub async fn run_enrich(config: EnrichConfig) -> Result<EnrichReport> {
 
     let total_work = work.len();
     let conn = Mutex::new(conn);
-    let enriched = std::sync::atomic::AtomicUsize::new(0);
-    let failed = std::sync::atomic::AtomicUsize::new(0);
+    let enriched = AtomicUsize::new(0);
+    let failed = AtomicUsize::new(0);
+
+    // Update shared progress with total (so UI can show it immediately)
+    if let Some(ref p) = config.progress {
+        p.total.store(total_work, Ordering::Relaxed);
+        p.done.store(0, Ordering::Relaxed);
+        p.failed.store(0, Ordering::Relaxed);
+    }
+
+    let progress_ref = &config.progress;
+    let cancel_ref = &config.cancel_flag;
+    let log_ref = &config.log_lines;
 
     // Process concurrently
     stream::iter(work.into_iter().enumerate())
-        .map(|(i, (session_id, digest))| {
+        .map(|(_, (session_id, digest))| {
             let conn_ref = &conn;
             let enriched_ref = &enriched;
             let failed_ref = &failed;
             async move {
+                // Check cancel flag before starting each item
+                if let Some(flag) = cancel_ref {
+                    if flag.load(Ordering::Relaxed) {
+                        return;
+                    }
+                }
                 match call_claude(&digest).await {
                     Ok(result) => {
                         // Store under lock
                         let db = conn_ref.lock().unwrap();
                         if let Err(e) = store_enrichment(&db, &session_id, &result) {
-                            tracing::error!("session {session_id}: DB store failed: {e:#}");
-                            failed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            let msg = format!("session {session_id}: DB store failed: {e:#}");
+                            tracing::error!("{msg}");
+                            push_log(log_ref, msg);
+                            failed_ref.fetch_add(1, Ordering::Relaxed);
+                            if let Some(ref p) = progress_ref {
+                                p.failed.fetch_add(1, Ordering::Relaxed);
+                            }
                             return;
                         }
                         drop(db);
@@ -368,16 +441,28 @@ pub async fn run_enrich(config: EnrichConfig) -> Result<EnrichReport> {
                             .map(|t| format!("{} {:.2}", t.tag, t.confidence))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        let n = enriched_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                        eprintln!(
+                        let n = enriched_ref.fetch_add(1, Ordering::Relaxed) + 1;
+                        if let Some(ref p) = progress_ref {
+                            p.done.fetch_add(1, Ordering::Relaxed);
+                        }
+                        let msg = format!(
                             "[{n}/{total_work}] Enriched: \"{}\" ({tags_str})",
                             result.title
                         );
+                        eprintln!("{msg}");
+                        push_log(log_ref, msg);
                     }
                     Err(e) => {
+                        failed_ref.fetch_add(1, Ordering::Relaxed);
+                        if let Some(ref p) = progress_ref {
+                            p.failed.fetch_add(1, Ordering::Relaxed);
+                        }
+                        let n_failed = failed_ref.load(Ordering::Relaxed);
+                        let n_done = enriched_ref.load(Ordering::Relaxed);
+                        let msg = format!("[{}/{total_work}] Failed: {session_id} — {e:#}", n_done + n_failed);
                         tracing::error!("session {session_id}: enrichment failed: {e:#}");
-                        let n = failed_ref.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                        eprintln!("[{}/{total_work}] Failed: {session_id} — {e:#}", i + 1 - n + 1);
+                        eprintln!("{msg}");
+                        push_log(log_ref, msg);
                     }
                 }
             }
@@ -387,11 +472,24 @@ pub async fn run_enrich(config: EnrichConfig) -> Result<EnrichReport> {
         .await;
 
     Ok(EnrichReport {
-        enriched: enriched.load(std::sync::atomic::Ordering::Relaxed),
+        enriched: enriched.load(Ordering::Relaxed),
         skipped,
-        failed: failed.load(std::sync::atomic::Ordering::Relaxed),
+        failed: failed.load(Ordering::Relaxed),
         total_candidates,
     })
+}
+
+// Public wrappers for use by the single-session enrichment API endpoint.
+pub fn build_session_digest_pub(conn: &Connection, session_id: &str) -> Result<Option<String>> {
+    build_session_digest(conn, session_id)
+}
+
+pub async fn call_claude_pub(digest: &str) -> Result<EnrichmentResult> {
+    call_claude(digest).await
+}
+
+pub fn store_enrichment_pub(conn: &Connection, session_id: &str, result: &EnrichmentResult) -> Result<()> {
+    store_enrichment(conn, session_id, result)
 }
 
 /// Helper: make rusqlite's QueryReturnedNoRows into Option::None

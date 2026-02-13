@@ -161,6 +161,9 @@ fn main() {
                     limit,
                     concurrency,
                     force,
+                    progress: None,
+                    cancel_flag: None,
+                    log_lines: None,
                 }).await {
                     Ok(report) => print!("{report}"),
                     Err(e) => {

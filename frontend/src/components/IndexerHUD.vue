@@ -119,6 +119,25 @@
         </div>
       </div>
 
+      <!-- LOGS TAB -->
+      <div v-if="activeTab === 'Logs'" class="hud-logs-tab">
+        <div class="logs-section" v-if="enricherLogs.length">
+          <div class="logs-section-title">Enrichment</div>
+          <div class="hud-log-viewer" ref="enricherLogEl">
+            <div v-for="(line, i) in enricherLogs" :key="'e'+i" :class="['log-line', line.includes('Failed') ? 'log-error' : '']">{{ line }}</div>
+          </div>
+        </div>
+        <div class="logs-section" v-if="indexerLogs.length">
+          <div class="logs-section-title">Indexer</div>
+          <div class="hud-log-viewer" ref="indexerLogEl">
+            <div v-for="(line, i) in indexerLogs" :key="'i'+i" class="log-line">{{ line }}</div>
+          </div>
+        </div>
+        <div v-if="!enricherLogs.length && !indexerLogs.length" class="logs-empty">
+          No log output yet. Run the indexer or enricher to see output here.
+        </div>
+      </div>
+
       <!-- SCHEDULE TAB -->
       <div v-if="activeTab === 'Schedule'">
         <div class="schedule-form">
@@ -149,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { gsap } from 'gsap'
 // @ts-ignore - macOS case-insensitive FS conflict between flip.d.ts and gsap/Flip module declaration
 import { Flip } from 'gsap/Flip'
@@ -160,7 +179,7 @@ gsap.registerPlugin(Flip)
 
 const hudRef = ref<HTMLElement>()
 const expanded = ref(false)
-const tabs = ['Indexer', 'Enrichment', 'Schedule'] as const
+const tabs = ['Indexer', 'Enrichment', 'Logs', 'Schedule'] as const
 type Tab = typeof tabs[number]
 const activeTab = ref<Tab>('Indexer')
 
@@ -187,6 +206,9 @@ const scheduleForm = ref({
   enrichment_concurrency: 5,
 })
 const scheduleSaved = ref(false)
+
+const indexerLogs = ref<string[]>([])
+const enricherLogs = ref<string[]>([])
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -230,6 +252,11 @@ async function pollStatus() {
   try {
     enricherStatus.value = await api.enrichment.status()
   } catch { /* ignore */ }
+  // Fetch logs when the Logs tab is visible
+  if (expanded.value && activeTab.value === 'Logs') {
+    try { indexerLogs.value = await api.indexer.logs() } catch { /* ignore */ }
+    try { enricherLogs.value = await api.enrichment.logs() } catch { /* ignore */ }
+  }
 }
 
 function startPolling() {
@@ -330,6 +357,14 @@ async function doEnrichStop() {
     enricherStatus.value.error_message = e.message
   }
 }
+
+// Fetch logs immediately when switching to Logs tab
+watch(activeTab, async (tab) => {
+  if (tab === 'Logs') {
+    try { indexerLogs.value = await api.indexer.logs() } catch { /* ignore */ }
+    try { enricherLogs.value = await api.enrichment.logs() } catch { /* ignore */ }
+  }
+})
 
 // Schedule actions
 async function loadSchedule() {
@@ -582,6 +617,45 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 0.75rem;
   color: var(--danger);
+}
+
+/* Logs */
+.hud-logs-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.logs-section-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+.hud-log-viewer {
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 0.375rem 0.5rem;
+  font-family: monospace;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+.log-error {
+  color: var(--danger);
+}
+.logs-empty {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 1rem 0;
 }
 
 /* Schedule form */

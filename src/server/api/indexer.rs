@@ -18,6 +18,15 @@ pub fn routes() -> Router<AppState> {
         .route("/indexer/stop", post(stop))
         .route("/indexer/pause", post(pause))
         .route("/indexer/resume", post(resume))
+        .route("/indexer/logs", get(logs))
+}
+
+async fn logs(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<String>>, AppError> {
+    let guard = state.indexer.lock().await;
+    let lines = guard.log_lines.lock().unwrap().clone();
+    Ok(Json(lines))
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<IndexerStatusResponse>, AppError> {

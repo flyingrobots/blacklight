@@ -191,20 +191,29 @@ async fn run_scheduled_enrichment(state: &AppState, concurrency: i32) {
         "Scheduled enrichment started",
     );
 
-    {
+    let progress = {
         let mut guard = state.enricher.lock().await;
         guard.reset_for_run();
-    }
+        guard.progress.clone()
+    };
 
     let enricher_state = state.enricher.clone();
     let db_path = state.db.db_path().to_path_buf();
     let notify_tx = state.notifications.clone();
+
+    let log_lines = {
+        let guard = enricher_state.lock().await;
+        guard.log_lines.clone()
+    };
 
     let config = EnrichConfig {
         db_path,
         limit: None,
         concurrency: concurrency as usize,
         force: false,
+        progress: Some(progress),
+        cancel_flag: None,
+        log_lines: Some(log_lines),
     };
 
     let result = crate::enrich::run_enrich(config).await;
@@ -237,9 +246,6 @@ async fn run_scheduled_enrichment(state: &AppState, concurrency: i32) {
                 }
             }
 
-            guard.sessions_done = report.enriched;
-            guard.sessions_failed = report.failed;
-            guard.sessions_total = report.total_candidates;
             guard.latest_report = Some(report);
         }
         Err(e) => {
