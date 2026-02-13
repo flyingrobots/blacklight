@@ -44,29 +44,30 @@ pub fn list_sessions(
         |row| row.get(0),
     )?;
 
-    // Fetch page — compute message_count from messages table (sessions-index metadata is unreliable),
-    // and fall back to first user message content when first_prompt is NULL.
-    // Join session_enrichments to surface AI-generated titles/summaries.
+    // Fetch page — JOIN enrichments unconditionally so we can expose approval_status.
+    // Only use enrichment title in COALESCE when approved.
     let query_sql = format!(
         "SELECT s.id, s.project_path, s.project_slug,
-                COALESCE(e.title, s.first_prompt, (
-                    SELECT substr(cs.content, 1, 200)
-                    FROM messages m2
-                    JOIN content_blocks cb ON cb.message_id = m2.id
-                    JOIN content_store cs ON cs.hash = cb.content_hash
-                    WHERE m2.session_id = s.id AND m2.type = 'user'
-                    ORDER BY m2.timestamp ASC
-                    LIMIT 1
-                )) as first_prompt,
+                COALESCE(
+                    CASE WHEN e.approval_status = 'approved' THEN e.title END,
+                    s.first_prompt,
+                    (SELECT substr(cs.content, 1, 200)
+                     FROM messages m2
+                     JOIN content_blocks cb ON cb.message_id = m2.id
+                     JOIN content_store cs ON cs.hash = cb.content_hash
+                     WHERE m2.session_id = s.id AND m2.type = 'user'
+                     ORDER BY m2.timestamp ASC
+                     LIMIT 1)
+                ) as first_prompt,
                 s.summary,
                 (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as message_count,
                 s.created_at, s.modified_at, s.git_branch,
                 s.claude_version, s.is_sidechain,
                 o.outcome, o.brief_summary,
-                e.title, e.summary
+                e.title, e.summary, e.approval_status
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
-         LEFT JOIN session_enrichments e ON e.session_id = s.id AND e.approval_status = 'approved'
+         LEFT JOIN session_enrichments e ON e.session_id = s.id
          {where_sql}
          ORDER BY s.modified_at DESC
          LIMIT ?{} OFFSET ?{}",
@@ -101,6 +102,7 @@ pub fn list_sessions(
                     row.get::<_, Option<String>>(12)?,
                     row.get::<_, Option<String>>(13)?,
                     row.get::<_, Option<String>>(14)?,
+                    row.get::<_, Option<String>>(15)?,
                 ))
             },
         )?
@@ -109,7 +111,7 @@ pub fn list_sessions(
     let mut items = Vec::with_capacity(rows.len());
     for (id, project_path, project_slug, first_prompt, summary, message_count,
          created_at, modified_at, git_branch, claude_version, is_sidechain,
-         outcome, brief_summary, enrichment_title, enrichment_summary) in rows
+         outcome, brief_summary, enrichment_title, enrichment_summary, approval_status) in rows
     {
         let tags = tag_stmt
             .query_map(params![id], |row| {
@@ -123,7 +125,8 @@ pub fn list_sessions(
         items.push(SessionSummary {
             id, project_path, project_slug, first_prompt, summary, message_count,
             created_at, modified_at, git_branch, claude_version, is_sidechain,
-            outcome, brief_summary, enrichment_title, enrichment_summary, tags,
+            outcome, brief_summary, enrichment_title, enrichment_summary,
+            approval_status, tags,
         });
     }
 
@@ -153,10 +156,10 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                 s.claude_version, s.is_sidechain,
                 o.underlying_goal, o.outcome, o.helpfulness, o.session_type,
                 o.primary_success, o.friction_detail, o.brief_summary,
-                e.title, e.summary
+                e.title, e.summary, e.approval_status
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
-         LEFT JOIN session_enrichments e ON e.session_id = s.id AND e.approval_status = 'approved'
+         LEFT JOIN session_enrichments e ON e.session_id = s.id
          WHERE s.id = ?1",
     )?;
 
@@ -193,6 +196,7 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                     outcome,
                     enrichment_title: row.get(18)?,
                     enrichment_summary: row.get(19)?,
+                    approval_status: row.get(20)?,
                     tags: Vec::new(), // filled below
                 },
                 row.get::<_, String>(0)?, // id again for tag lookup

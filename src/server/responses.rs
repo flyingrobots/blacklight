@@ -75,6 +75,7 @@ pub struct SessionSummary {
     pub brief_summary: Option<String>,
     pub enrichment_title: Option<String>,
     pub enrichment_summary: Option<String>,
+    pub approval_status: Option<String>,
     pub tags: Vec<SessionTag>,
 }
 
@@ -102,6 +103,7 @@ pub struct SessionDetail {
     pub outcome: Option<SessionOutcome>,
     pub enrichment_title: Option<String>,
     pub enrichment_summary: Option<String>,
+    pub approval_status: Option<String>,
     pub tags: Vec<SessionTag>,
 }
 
