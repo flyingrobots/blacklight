@@ -34,6 +34,11 @@
           <span :class="['status-badge', `status-${indexerStatus.status}`]">{{ indexerStatus.status }}</span>
         </div>
 
+        <div class="hud-summary-row">
+          <span>{{ coverageData ? coverageData.indexed_files.toLocaleString() + '/' + coverageData.source_files.toLocaleString() + ' files indexed' : '...' }}</span>
+          <span class="hud-timestamp" v-if="indexerLastUpdated">Last updated {{ indexerLastUpdated }}</span>
+        </div>
+
         <div v-if="indexerIsActive || indexerStatus.status === 'paused'" class="hud-progress">
           <div class="progress-phase">{{ indexerStatus.progress.phase }}</div>
           <div class="progress-bar">
@@ -81,6 +86,11 @@
       <div v-if="activeTab === 'Enrichment'">
         <div class="hud-status-row">
           <span :class="['status-badge', `status-${enricherStatus.status}`]">{{ enricherStatus.status }}</span>
+        </div>
+
+        <div class="hud-summary-row">
+          <span>{{ enrichmentSummary }}</span>
+          <span class="hud-timestamp" v-if="enricherLastUpdated">Last updated {{ enricherLastUpdated }}</span>
         </div>
 
         <div v-if="enricherIsActive" class="hud-progress">
@@ -173,7 +183,7 @@ import { gsap } from 'gsap'
 // @ts-ignore - macOS case-insensitive FS conflict between flip.d.ts and gsap/Flip module declaration
 import { Flip } from 'gsap/Flip'
 import { api } from '@/api/client'
-import type { IndexerStatusResponse, EnricherStatusResponse, ScheduleConfig } from '@/types'
+import type { IndexerStatusResponse, EnricherStatusResponse, IndexCoverage, AnalyticsOverview, ScheduleConfig } from '@/types'
 
 gsap.registerPlugin(Flip)
 
@@ -182,6 +192,13 @@ const expanded = ref(false)
 const tabs = ['Indexer', 'Enrichment', 'Logs', 'Schedule'] as const
 type Tab = typeof tabs[number]
 const activeTab = ref<Tab>('Indexer')
+
+const coverageData = ref<IndexCoverage | null>(null)
+const overviewData = ref<AnalyticsOverview | null>(null)
+const indexerLastUpdated = ref('')
+const enricherLastUpdated = ref('')
+const enrichedCount = ref(0)
+const totalSessionCount = ref(0)
 
 const indexerStatus = ref<IndexerStatusResponse>({
   status: 'idle',
@@ -233,6 +250,22 @@ const enricherPct = computed(() => {
   return Math.min(100, ((s.sessions_done + s.sessions_failed) / s.sessions_total) * 100)
 })
 
+const enrichmentSummary = computed(() => {
+  if (totalSessionCount.value === 0) return '...'
+  return `${enrichedCount.value.toLocaleString()}/${totalSessionCount.value.toLocaleString()} sessions enriched`
+})
+
+function timeAgo(date: Date): string {
+  const secs = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (secs < 60) return 'just now'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
 const pillLabel = computed(() => {
   if (enricherIsActive.value) {
     const pct = enricherPct.value
@@ -245,12 +278,44 @@ const pillLabel = computed(() => {
   return 'Running...'
 })
 
-async function pollStatus() {
+async function fetchCoverageAndOverview() {
   try {
-    indexerStatus.value = await api.indexer.status()
+    coverageData.value = await api.analytics.coverage()
+    totalSessionCount.value = coverageData.value.total_sessions
+    enrichedCount.value = coverageData.value.sessions_with_outcomes
   } catch { /* ignore */ }
   try {
+    overviewData.value = await api.analytics.overview()
+    totalSessionCount.value = overviewData.value.total_sessions
+    if (overviewData.value.last_session) {
+      indexerLastUpdated.value = timeAgo(new Date(overviewData.value.last_session))
+    }
+  } catch { /* ignore */ }
+  // Use enrichment count from a lightweight query
+  try {
+    const pending = await api.enrichment.pendingCount()
+    // pending.count is pending_review; enrichedCount is sessions_with_outcomes from coverage
+    // We'll refine enricherLastUpdated from the enricher status
+  } catch { /* ignore */ }
+}
+
+async function pollStatus() {
+  try {
+    const prev = indexerStatus.value.status
+    indexerStatus.value = await api.indexer.status()
+    // If indexer just finished, refresh coverage data
+    if (prev === 'running' && indexerStatus.value.status !== 'running') {
+      indexerLastUpdated.value = timeAgo(new Date())
+      fetchCoverageAndOverview()
+    }
+  } catch { /* ignore */ }
+  try {
+    const prev = enricherStatus.value.status
     enricherStatus.value = await api.enrichment.status()
+    if (prev === 'running' && enricherStatus.value.status !== 'running') {
+      enricherLastUpdated.value = timeAgo(new Date())
+      fetchCoverageAndOverview()
+    }
   } catch { /* ignore */ }
   // Fetch logs when the Logs tab is visible
   if (expanded.value && activeTab.value === 'Logs') {
@@ -391,6 +456,7 @@ async function saveSchedule() {
 
 onMounted(async () => {
   await pollStatus()
+  await fetchCoverageAndOverview()
   loadSchedule()
   startPolling()
 })
@@ -519,6 +585,24 @@ onUnmounted(() => {
 /* Status row */
 .hud-status-row {
   margin-bottom: 0.75rem;
+}
+
+/* Summary row */
+.hud-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+  padding: 0.375rem 0.5rem;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+}
+.hud-timestamp {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 
 /* Status badges */

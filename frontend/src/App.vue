@@ -30,6 +30,7 @@
           class="search-input"
           @keydown.enter="onSearch"
         />
+        <ThemeSwitcher />
       </div>
     </header>
     <main class="content">
@@ -47,8 +48,13 @@ import { gsap } from 'gsap'
 import logoUrl from '@/assets/BLACKLIGHT.svg'
 import IndexerHUD from '@/components/IndexerHUD.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
+import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 import { useNotifications } from '@/composables/useNotifications'
+import { useTheme } from '@/composables/useTheme'
 import { api } from '@/api/client'
+
+// Initialize theme on app load
+useTheme()
 
 const router = useRouter()
 const route = useRoute()
@@ -252,6 +258,8 @@ onUnmounted(() => {
 .nav-search {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
   padding: 0 2rem 1.25rem;
 }
 .nav-search .search-input {
