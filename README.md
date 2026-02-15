@@ -55,6 +55,7 @@ This mounts `~/.claude` read-only into the container and exposes the dashboard o
 ## CLI
 
 ```
+blacklight init                     # write default config to ~/.blacklight/blacklight.toml
 blacklight index                    # incremental index (only new/modified files)
 blacklight index --full             # full re-index from scratch
 blacklight serve                    # web UI on :3141
@@ -68,7 +69,53 @@ blacklight search "auth bug"        # full-text search from terminal
 blacklight stats                    # usage overview
 ```
 
-Global options: `--db <path>` for a custom database location, `--claude-dir <path>` to point at a different `~/.claude/` directory.
+Global options: `--db <path>`, `--claude-dir <path>`, `--config <path>` (defaults to `~/.blacklight/blacklight.toml`).
+
+## Configuration
+
+Blacklight reads `~/.blacklight/blacklight.toml` if it exists. Generate a starter file with all defaults commented out:
+
+```bash
+blacklight init
+```
+
+**Priority chain:** CLI flags > environment variables > config file > defaults.
+
+```toml
+# ~/.blacklight/blacklight.toml
+
+db = "~/.blacklight/blacklight.db"
+claude_dir = "~/.claude/"
+log_level = "info"
+
+[server]
+port = 3141
+no_open = false
+
+[indexer]
+verbose = false
+skip_dirs = ["cache", "statsig", "shell-snapshots", "session-env", "ide", "paste-cache", "debug", "telemetry"]
+
+[enrichment]
+concurrency = 5
+auto_approve_threshold = 0.80
+ollama_url = "http://localhost:11434"
+ollama_model = ""
+google_api_key = ""
+preferred_backend = "auto"   # auto | ollama | gemini | claude-cli
+
+[scheduler]
+enabled = true
+interval_minutes = 60
+run_enrichment = true
+enrichment_concurrency = 5
+
+[sqlite]
+cache_size_mb = 64
+mmap_size_mb = 256
+```
+
+Everything is optional — omit any key and the default applies. `RUST_LOG` still overrides `log_level`; `GOOGLE_API_KEY` and `OLLAMA_MODEL` env vars still override their config file counterparts.
 
 ## Web Dashboard
 
@@ -94,24 +141,29 @@ Real-time **WebSocket notifications** push status updates to the browser as inde
 
 Blacklight can auto-generate a title, summary, and tags for each session by sending a digest (first 20 messages, tools used, project context) to an LLM.
 
-**Supported backends:**
-- **Claude API** — set `ANTHROPIC_API_KEY` in your environment
-- **Local Ollama** — auto-detected at `localhost:11434` if running
+**Supported backends** (set `preferred_backend` in config, or leave as `"auto"` for fallback order):
+1. **Local Ollama** — auto-detected at `localhost:11434`, or set `ollama_url` / `OLLAMA_MODEL`
+2. **Google Gemini** — set `google_api_key` in config or `GOOGLE_API_KEY` env var
+3. **Claude CLI** — uses the `claude` command on your PATH (no API key needed)
 
-Enrichments go through an **approval workflow**: new enrichments land in `pending_review` status and appear on the Review page. Approve or reject individually, or bulk-approve all. Only approved enrichments show as session titles in the UI.
+In `"auto"` mode, Blacklight tries Ollama first, then Gemini, then Claude CLI.
 
-The background **scheduler** can automate both indexing and enrichment on a configurable interval, managed from the HUD's Schedule tab.
+Enrichments go through an **approval workflow**: tags below the `auto_approve_threshold` (default 0.80) land in `pending_review` status and appear on the Review page. Approve or reject individually, or bulk-approve all. Only approved enrichments show as session titles in the UI.
+
+The background **scheduler** can automate both indexing and enrichment on a configurable interval, managed from the HUD's Schedule tab or via the `[scheduler]` config section.
 
 ## Architecture
 
 ```bash
 src/
 ├── main.rs              CLI entry (clap)
-├── db.rs                SQLite migrations, connection pool
+├── config.rs            TOML config loading, defaults, tilde expansion
+├── config_template.toml Template for `blacklight init`
+├── db.rs                SQLite migrations, configurable PRAGMAs
 ├── schema.sql           Tables, indexes, FTS5
 ├── models.rs            Serde types for ~/.claude/ data
 ├── content.rs           BLAKE3 hashing, blob store, FTS5 ops
-├── enrich.rs            AI enrichment (Claude API / Ollama)
+├── enrich.rs            AI enrichment (Ollama / Gemini / Claude CLI)
 ├── notifications.rs     WebSocket broadcast channel
 ├── indexer/
 │   ├── mod.rs           Orchestrator: scan → detect → parse → store
