@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1] - 2026-02-15
+
+### Changed
+
+- License changed from MIT to Apache-2.0
+- Published to GitHub at https://github.com/flyingrobots/blacklight
+
 ## [0.4.0] - 2026-02-15
 
 ### Added — Configuration File Support
