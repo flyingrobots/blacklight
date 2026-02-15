@@ -1,12 +1,21 @@
 # Blacklight
 
-A local-first tool that indexes `~/.claude/` — the hidden directory where Claude Code stores every conversation, tool call, file edit, and session artifact — and makes it visible, searchable, and understandable.
+<p align="center">
+    <img src="./frontend/src/assets/BLACKLIGHT.svg" />
+</p>
 
-Single Rust binary. Single SQLite file. Embedded web dashboard. No cloud, no daemon, no external services.
+A local-only tool that indexes `~/.claude/` — the hidden directory where Claude Code stores every conversation, tool call, file edit, and session artifact — and makes it visible, searchable, and understandable.
+
+Single Rust binary.  
+Single SQLite file.  
+Embedded web dashboard.  
+No cloud, no daemon, no external services.  
 
 ## Why
 
-Claude Code stores 4.5GB+ of structured data in `~/.claude/` with no way to browse it. Blacklight gives you:
+Claude Code stores tons of structured data in `~/.claude/` with no way to browse it. 
+
+Blacklight gives you:
 
 - **Full-text search** across every conversation, tool output, and thinking block
 - **Session replay** with rendered content blocks, tool call cards, and collapsible thinking
@@ -30,7 +39,10 @@ cargo build --release
 ./target/release/blacklight serve
 ```
 
-That's it. The indexer scans `~/.claude/`, parses every JSONL session file, and populates a local SQLite database. The web server embeds the frontend — no separate process needed.
+That's it. 
+
+The indexer scans `~/.claude/`, parses every JSONL session file, and populates a local SQLite database.  
+The web server embeds the frontend — no separate process needed.
 
 ### Docker
 
@@ -92,7 +104,7 @@ The background **scheduler** can automate both indexing and enrichment on a conf
 
 ## Architecture
 
-```
+```bash
 src/
 ├── main.rs              CLI entry (clap)
 ├── db.rs                SQLite migrations, connection pool
@@ -165,3 +177,11 @@ Run the backend and frontend dev server simultaneously during development — Vi
 ## License
 
 Apache-2.0
+
+Copyright © 2026 James Ross
+
+---
+
+<p align="center">
+<sub>Built by <a href="https://github.com/flyingrobots">FLYING ROBOTS</a></sub>
+</p>
