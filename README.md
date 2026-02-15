@@ -164,4 +164,4 @@ Run the backend and frontend dev server simultaneously during development — Vi
 
 ## License
 
-MIT
+Apache-2.0
