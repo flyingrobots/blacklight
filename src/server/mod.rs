@@ -12,6 +12,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::config::BlacklightConfig;
 use crate::notifications;
 use state::{AppState, DbPool, EnricherState, IndexerState};
 
@@ -21,11 +22,13 @@ pub async fn start_server(
     source_dir: &Path,
     port: u16,
     no_open: bool,
+    config: &BlacklightConfig,
 ) -> Result<()> {
     let pool = DbPool::new(db_path, 4)?;
     let state = AppState {
         db: Arc::new(pool),
         source_dir: source_dir.to_path_buf(),
+        config: Arc::new(config.clone()),
         indexer: Arc::new(tokio::sync::Mutex::new(IndexerState::default())),
         enricher: Arc::new(tokio::sync::Mutex::new(EnricherState::default())),
         scheduler: Arc::new(tokio::sync::Mutex::new(None)),
@@ -38,7 +41,7 @@ pub async fn start_server(
 
     let app = router::build_router(state);
 
-    let addr = format!("127.0.0.1:{port}");
+    let addr = format!("0.0.0.0:{port}");
     let url = format!("http://{addr}");
 
     tracing::info!("starting server at {url}");

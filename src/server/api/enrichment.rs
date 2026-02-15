@@ -74,11 +74,17 @@ async fn start(
 
     drop(guard);
 
+    let enrich_cfg = &state.config.enrichment;
     let config = EnrichConfig {
         db_path,
         limit: params.limit,
         concurrency: params.concurrency,
         force: params.force,
+        ollama_url: enrich_cfg.ollama_url.clone(),
+        ollama_model: enrich_cfg.ollama_model.clone(),
+        google_api_key: enrich_cfg.google_api_key.clone(),
+        auto_approve_threshold: enrich_cfg.auto_approve_threshold,
+        preferred_backend: enrich_cfg.preferred_backend.clone(),
         progress: Some(progress),
         cancel_flag: Some(cancel_flag.clone()),
         log_lines: Some(log_lines),
@@ -187,6 +193,8 @@ async fn enrich_single(
     Path(session_id): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let db_path = state.db.db_path().to_path_buf();
+    let ollama_url = state.config.enrichment.ollama_url.clone();
+    let auto_approve_threshold = state.config.enrichment.auto_approve_threshold;
 
     let sid = session_id.clone();
     tokio::spawn(async move {
@@ -212,16 +220,16 @@ async fn enrich_single(
             }
         };
 
-        match crate::enrich::call_claude_pub(&digest).await {
-            Ok(result) => {
-                if let Err(e) = crate::enrich::store_enrichment_pub(&conn, &sid, &result) {
+        match crate::enrich::call_model_pub(&digest, &ollama_url).await {
+            Ok((result, model_name)) => {
+                if let Err(e) = crate::enrich::store_enrichment_pub(&conn, &sid, &result, &model_name, auto_approve_threshold) {
                     tracing::error!("enrich_single: failed to store: {e:#}");
                 } else {
-                    tracing::info!("enrich_single: enriched session {sid}: \"{}\"", result.title);
+                    tracing::info!("enrich_single: enriched session {sid} using {model_name}: \"{}\"", result.title);
                 }
             }
             Err(e) => {
-                tracing::error!("enrich_single: claude call failed for {sid}: {e:#}");
+                tracing::error!("enrich_single: model call failed for {sid}: {e:#}");
             }
         }
     });

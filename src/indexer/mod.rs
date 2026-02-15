@@ -28,6 +28,8 @@ pub struct IndexConfig {
     pub db_path: PathBuf,
     pub full: bool,
     pub verbose: bool,
+    /// Directories to skip during scanning.
+    pub skip_dirs: Vec<String>,
     /// Shared progress tracker (updated during indexing).
     pub progress: Option<Arc<Mutex<IndexProgress>>>,
     /// Cancellation flag (checked between phases and files).
@@ -139,13 +141,13 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         .context("failed to open database")?;
 
     // 2. Scan filesystem (primary + extra dirs)
-    let mut manifest = scanner::scan(&config.claude_dir)
+    let mut manifest = scanner::scan_with_skip_dirs(&config.claude_dir, &config.skip_dirs)
         .with_context(|| format!("failed to scan {}", config.claude_dir.display()))?;
 
     for extra in &config.extra_dirs {
         if extra.exists() {
             tracing::info!("scanning extra source: {}", extra.display());
-            match scanner::scan(extra) {
+            match scanner::scan_with_skip_dirs(extra, &config.skip_dirs) {
                 Ok(entries) => manifest.extend(entries),
                 Err(e) => {
                     let msg = format!("Failed to scan {}: {e}", extra.display());

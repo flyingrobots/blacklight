@@ -646,7 +646,7 @@ Output: formatted tables to stdout.
 -- Session metadata (from sessions-index.json)
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,                    -- UUID
-    project_path TEXT NOT NULL,             -- e.g., "/Users/james/git/echo"
+    project_path TEXT NOT NULL,             -- e.g., "/home/user/projects/echo"
     project_slug TEXT NOT NULL,             -- e.g., "echo"
     first_prompt TEXT,
     summary TEXT,

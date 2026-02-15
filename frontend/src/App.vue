@@ -4,7 +4,7 @@
       <nav class="nav-bar">
         <ul class="nav-links">
           <li><router-link to="/">Dashboard</router-link></li>
-          <li><router-link to="/sessions">Sessions</router-link></li>
+          <li><router-link to="/sessions" :class="{ 'router-link-active': $route.path.startsWith('/sessions') }">Sessions</router-link></li>
           <li><router-link to="/projects">Projects</router-link></li>
           <li><router-link to="/analytics">Analytics</router-link></li>
           <li><router-link to="/files">Files</router-link></li>
@@ -42,7 +42,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { gsap } from 'gsap'
 import logoUrl from '@/assets/BLACKLIGHT.svg'
 import IndexerHUD from '@/components/IndexerHUD.vue'
@@ -51,6 +51,7 @@ import { useNotifications } from '@/composables/useNotifications'
 import { api } from '@/api/client'
 
 const router = useRouter()
+const route = useRoute()
 const logoRef = ref<HTMLImageElement>()
 const logoWrapRef = ref<HTMLElement>()
 const circlesRef = ref<SVGSVGElement>()
@@ -68,19 +69,18 @@ function onSearch() {
 const BASE_FILTER = 'invert(1) brightness(0.85) sepia(1) hue-rotate(180deg) saturate(3)'
 
 // Letter positions in SVG viewBox coordinates.
-// Content spans x=0..66.8, y=0..71.6 within viewBox "-10 -40 685.8 151.6".
-// BLACKLIGHT = 10 letters, monospaced pixel-art font.
+// BLACKLIGHT = 10 letters
 function getLetterBounds(): { cx: number; cy: number; r: number }[] {
   const LETTERS = 10
-  const CONTENT_X = 0
-  const CONTENT_W = 665.8
-  const CONTENT_Y = 0
-  const CONTENT_H = 71.6
-  const letterW = CONTENT_W / LETTERS
-  const cy = CONTENT_Y + CONTENT_H / 2
+  const VB_W = 685.8
+  const VB_H = 151.6
+  // Based on the SVG paths, the letters are roughly evenly spaced.
+  // The content seems to be centered.
+  const letterW = VB_W / LETTERS
+  const cy = VB_H / 2
 
   return Array.from({ length: LETTERS }, (_, i) => ({
-    cx: CONTENT_X + letterW * (i + 0.5),
+    cx: letterW * (i + 0.5),
     cy,
     r: letterW / 2,
   }))
@@ -108,41 +108,36 @@ onMounted(() => {
   const wrap = logoWrapRef.value
   svgEl.setAttribute('viewBox', `-10 -40 ${VB_W} ${VB_H}`)
 
-  bounds.forEach(({ cx, cy, r }) => {
+  bounds.forEach(({ cx, cy, r }, i) => {
     // --- Rainbow layer: clipped copy that cycles hue on hover ---
     const rainbowImg = document.createElement('img')
     rainbowImg.src = logoUrl
     rainbowImg.className = 'logo-letter-rainbow'
     // clip-path uses % of the element's own dimensions.
-    // The img renders the full viewBox (-10 -40 685.8 151.6).
-    // Content coords cx,r are in viewBox content space (0-based).
-    // Offset by 10 to account for viewBox starting at x=-10.
-    const leftPct = Math.max(0, ((cx - r - 3 + 10) / VB_W) * 100)
-    const rightPct = Math.max(0, (1 - (cx + r + 3 + 10) / VB_W) * 100)
+    const leftPct = (i / 10) * 100
+    const rightPct = 100 - ((i + 1) / 10) * 100
     rainbowImg.style.clipPath = `inset(0 ${rightPct}% 0 ${leftPct}%)`
     rainbowImg.style.opacity = '0'
     wrap.appendChild(rainbowImg)
 
-    // Per-letter rainbow tween — paused by default
+    // Per-letter rainbow tween
     const proxy = { hue: 0, opacity: 0 }
-    let wantStop = false
+    let wantStop = true
 
     const tween = gsap.to(proxy, {
       hue: 360,
-      duration: 3,
+      duration: 2,
       ease: 'none',
       repeat: -1,
       paused: true,
       onUpdate: () => {
         if (!wantStop && proxy.opacity < 1) {
-          proxy.opacity = Math.min(1, proxy.opacity + 0.05)
+          proxy.opacity = Math.min(1, proxy.opacity + 0.1)
         }
         if (wantStop) {
-          proxy.opacity = Math.max(0, proxy.opacity - 0.03)
+          proxy.opacity = Math.max(0, proxy.opacity - 0.05)
           if (proxy.opacity <= 0) {
             tween.pause()
-            wantStop = false
-            proxy.hue = 0
           }
         }
         rainbowImg.style.opacity = String(proxy.opacity)
@@ -150,10 +145,10 @@ onMounted(() => {
       },
     })
 
-    // --- Hit zone: use a rect covering this letter's full vertical column ---
-    // SVG viewBox coords: content cx,r are 0-based, viewBox origin is -10,-40
+    // --- Hit zone ---
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-    rect.setAttribute('x', String(cx - r))
+    // Offset by -10 because viewBox starts at x=-10
+    rect.setAttribute('x', String(cx - r - 10))
     rect.setAttribute('y', String(-40))
     rect.setAttribute('width', String(r * 2))
     rect.setAttribute('height', String(VB_H))
@@ -192,7 +187,7 @@ onUnmounted(() => {
 .masthead {
   display: flex;
   justify-content: center;
-  padding: 5rem 2rem 2.5rem;
+  padding: 1rem 2rem 1rem;
 }
 .logo-wrap {
   position: relative;

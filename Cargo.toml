@@ -15,12 +15,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors", "compression-gzip", "fs"] }
-rust-embed = { version = "8", features = ["compression"] }
+rust-embed = { version = "=8.5.0", features = ["compression"] }
 mime_guess = "2"
 open = "5"
 dirs = "6"
 futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

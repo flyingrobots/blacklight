@@ -96,8 +96,8 @@ pub struct FileEntry {
     pub size_bytes: u64,
 }
 
-/// Directories to skip entirely during scanning.
-const SKIP_DIRS: &[&str] = &[
+/// Default directories to skip entirely during scanning.
+pub const DEFAULT_SKIP_DIRS: &[&str] = &[
     "cache",
     "statsig",
     "shell-snapshots",
@@ -115,9 +115,16 @@ const SKIP_FILES: &[&str] = &[".DS_Store", "settings.json"];
 const SKIP_EXTENSIONS: &[&str] = &["lock", "highwatermark"];
 
 /// Recursively scan the given root directory, classify all files, and return sorted entries.
+/// Uses the default skip_dirs list.
 pub fn scan(root: &Path) -> Result<Vec<FileEntry>> {
+    let default_skip: Vec<String> = DEFAULT_SKIP_DIRS.iter().map(|s| (*s).to_string()).collect();
+    scan_with_skip_dirs(root, &default_skip)
+}
+
+/// Recursively scan the given root directory with custom skip_dirs.
+pub fn scan_with_skip_dirs(root: &Path, skip_dirs: &[String]) -> Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
-    walk_dir(root, root, &mut entries)?;
+    walk_dir(root, root, skip_dirs, &mut entries)?;
     entries.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.path.cmp(&b.path)));
 
     // Log counts per kind
@@ -133,7 +140,7 @@ pub fn scan(root: &Path) -> Result<Vec<FileEntry>> {
     Ok(entries)
 }
 
-fn walk_dir(root: &Path, dir: &Path, entries: &mut Vec<FileEntry>) -> Result<()> {
+fn walk_dir(root: &Path, dir: &Path, skip_dirs: &[String], entries: &mut Vec<FileEntry>) -> Result<()> {
     let read_dir = match fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
@@ -156,11 +163,11 @@ fn walk_dir(root: &Path, dir: &Path, entries: &mut Vec<FileEntry>) -> Result<()>
         if file_type.is_dir() {
             let dir_name = entry.file_name();
             let dir_name_str = dir_name.to_string_lossy();
-            if SKIP_DIRS.contains(&dir_name_str.as_ref()) {
+            if skip_dirs.iter().any(|s| s == dir_name_str.as_ref()) {
                 tracing::debug!("skipping directory: {}", path.display());
                 continue;
             }
-            walk_dir(root, &path, entries)?;
+            walk_dir(root, &path, skip_dirs, entries)?;
         } else if file_type.is_file() {
             let file_name = entry.file_name();
             let file_name_str = file_name.to_string_lossy();

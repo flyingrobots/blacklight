@@ -529,7 +529,7 @@ Parse `sessions-index.json` files to populate the `sessions` table.
 **Requirements:**
 - Deserialize each `sessions-index.json` into `SessionIndex` struct
 - Extract `project_path` from the index's `originalPath` field
-- Derive `project_slug` from the last path component (e.g., `/Users/james/git/echo` → `echo`)
+- Derive `project_slug` from the last path component (e.g., `/home/user/projects/echo` → `echo`)
 - For each entry: insert or update `sessions` table
 - Handle missing/null fields gracefully (summary, gitBranch may be empty)
 - Extract `claude_version` from session JSONL if not in index (defer to F2.3)

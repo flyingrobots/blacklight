@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0] - 2026-02-15
+
+### Added — Configuration File Support
+
+- `blacklight.toml` configuration file at `~/.blacklight/blacklight.toml`
+- Priority chain: CLI flags > env vars > config file > defaults
+- `blacklight init` subcommand writes a commented-out template with all defaults
+- `--config <PATH>` global CLI flag to specify an alternate config file
+- Configurable SQLite PRAGMAs (`cache_size_mb`, `mmap_size_mb`) via `[sqlite]` section
+- Configurable scanner `skip_dirs` via `[indexer]` section
+- Configurable enrichment backend (`preferred_backend`: auto/ollama/gemini/claude-cli), Ollama URL, model, API keys, and auto-approve threshold via `[enrichment]` section
+- Configurable server port and `no_open` via `[server]` section
+- Configurable `log_level` (RUST_LOG still takes precedence)
+- `toml` crate dependency for config parsing
+
+### Changed
+
+- `db::open()` now delegates to `db::open_with_config()` (existing callers unaffected)
+- `scanner::scan()` now delegates to `scan_with_skip_dirs()` (existing callers unaffected)
+- `start_server()` accepts `&BlacklightConfig` for threading config to handlers
+- `AppState` carries `config: Arc<BlacklightConfig>` for server-side config access
+- `EnrichConfig` accepts `ollama_url`, `ollama_model`, `google_api_key`, `auto_approve_threshold`, `preferred_backend`
+- `IndexConfig` accepts `skip_dirs: Vec<String>`
+- `--port` (serve) and `--concurrency` (enrich) CLI args changed from required-with-default to `Option<T>`, falling back to config file values
+
 ## [0.3.0] - 2026-02-11
 
 ### Added — M3 Serve

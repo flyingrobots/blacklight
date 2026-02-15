@@ -117,6 +117,7 @@ async fn run_scheduled_index(state: &AppState) {
     let source_dir = state.source_dir.clone();
     let db_path = state.db.db_path().to_path_buf();
     let notify_tx = state.notifications.clone();
+    let skip_dirs = state.config.indexer.skip_dirs.clone();
 
     drop(guard);
 
@@ -128,6 +129,7 @@ async fn run_scheduled_index(state: &AppState) {
             db_path,
             full: false,
             verbose: false,
+            skip_dirs,
             progress: Some(progress),
             cancel_flag: Some(cancel_flag.clone()),
             pause_flag: Some(pause_flag),
@@ -206,11 +208,17 @@ async fn run_scheduled_enrichment(state: &AppState, concurrency: i32) {
         guard.log_lines.clone()
     };
 
+    let enrich_cfg = &state.config.enrichment;
     let config = EnrichConfig {
         db_path,
         limit: None,
         concurrency: concurrency as usize,
         force: false,
+        ollama_url: enrich_cfg.ollama_url.clone(),
+        ollama_model: enrich_cfg.ollama_model.clone(),
+        google_api_key: enrich_cfg.google_api_key.clone(),
+        auto_approve_threshold: enrich_cfg.auto_approve_threshold,
+        preferred_backend: enrich_cfg.preferred_backend.clone(),
         progress: Some(progress),
         cancel_flag: None,
         log_lines: Some(log_lines),

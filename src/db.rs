@@ -2,14 +2,21 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
+use crate::config::SqliteConfig;
+
 const MIGRATION_001: &str = include_str!("schema.sql");
 const MIGRATION_002: &str = include_str!("enrich_migration.sql");
 const MIGRATION_003: &str = include_str!("schedule_migration.sql");
 
 const MIGRATIONS: &[(u32, &str)] = &[(1, MIGRATION_001), (2, MIGRATION_002), (3, MIGRATION_003)];
 
-/// Open or create a SQLite database at the given path with all optimizations applied.
+/// Open or create a SQLite database with default PRAGMA settings.
 pub fn open(path: &Path) -> Result<Connection> {
+    open_with_config(path, &SqliteConfig::default())
+}
+
+/// Open or create a SQLite database with configurable PRAGMA settings.
+pub fn open_with_config(path: &Path, sqlite_config: &SqliteConfig) -> Result<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create directory {}", parent.display()))?;
@@ -18,15 +25,20 @@ pub fn open(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)
         .with_context(|| format!("failed to open database at {}", path.display()))?;
 
-    // Set PRAGMAs for optimal performance
-    conn.execute_batch(
+    // cache_size in KB (negative = KB in SQLite convention)
+    let cache_size_kb = sqlite_config.cache_size_mb as i64 * 1000;
+    let mmap_size = sqlite_config.mmap_size_mb as i64 * 1_048_576;
+
+    let pragmas = format!(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA foreign_keys = ON;
-         PRAGMA cache_size = -64000;
-         PRAGMA mmap_size = 268435456;",
-    )
-    .context("failed to set database PRAGMAs")?;
+         PRAGMA cache_size = -{cache_size_kb};
+         PRAGMA mmap_size = {mmap_size};"
+    );
+
+    conn.execute_batch(&pragmas)
+        .context("failed to set database PRAGMAs")?;
 
     migrate(&conn)?;
 

@@ -12,6 +12,26 @@
           <span class="date">{{ new Date(session.created_at).toLocaleString() }}</span>
           <span v-if="session.message_count" class="count">{{ session.message_count }} messages</span>
         </div>
+
+        <div class="status-actions">
+          <div class="status-item">
+            <span class="label">Indexed:</span>
+            <span class="value success">Yes</span>
+            <button class="action-btn" @click="reIndex" :disabled="reIndexing">
+              {{ reIndexing ? 'Indexing...' : 'Re-index' }}
+            </button>
+          </div>
+          <div class="status-item">
+            <span class="label">Enriched:</span>
+            <span class="value" :class="session.enrichment_title ? 'success' : 'warn'">
+              {{ session.enrichment_title ? 'Yes' : 'No' }}
+            </span>
+            <button class="action-btn" @click="reEnrich" :disabled="reEnriching">
+              {{ reEnriching ? 'Enriching...' : (session.enrichment_title ? 'Re-enrich' : 'Enrich now') }}
+            </button>
+          </div>
+        </div>
+
         <p v-if="session.enrichment_summary" class="enrichment-summary">{{ session.enrichment_summary }}</p>
         <div v-if="session.tags && session.tags.length" class="tags-row">
           <span v-for="t in session.tags" :key="t.tag" class="tag-chip">{{ t.tag }}</span>
@@ -101,6 +121,39 @@ const activeTab = ref('Messages')
 const tabs = ['Messages', 'Tools', 'Files', 'Raw']
 const rawLoading = ref(false)
 const rawError = ref('')
+const reIndexing = ref(false)
+const reEnriching = ref(false)
+
+async function reIndex() {
+  if (!session.value) return
+  reIndexing.value = true
+  try {
+    // Current backend doesn't have per-session re-indexing yet,
+    // so we trigger a full incremental index run.
+    await api.indexer.start(false)
+    // We don't wait for it to finish as it's a background process
+  } catch (e: any) {
+    alert('Failed to start indexer: ' + e.message)
+  } finally {
+    reIndexing.value = false
+  }
+}
+
+async function reEnrich() {
+  if (!session.value) return
+  reEnriching.value = true
+  try {
+    await api.enrichment.start({ limit: 1, force: true })
+    // Optimization: we could call a (planned) per-session endpoint here
+    // but the bulk one with limit 1 and force will target newest first.
+    // Wait a bit then refresh
+    setTimeout(() => fetchSession(route.params.id as string), 2000)
+  } catch (e: any) {
+    alert('Failed to start enrichment: ' + e.message)
+  } finally {
+    reEnriching.value = false
+  }
+}
 
 interface RawLine {
   type: string
@@ -200,8 +253,54 @@ watch(activeTab, (tab) => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem;
   flex-wrap: wrap;
+}
+.status-actions {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: fit-content;
+}
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+}
+.status-item .label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.status-item .value {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+.status-item .value.success { color: var(--success); }
+.status-item .value.warn { color: var(--warning); }
+
+.action-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.25rem 0.625rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.action-btn:hover:not(:disabled) {
+  background: var(--border);
+  border-color: var(--text-secondary);
+}
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .badge {
   background: var(--bg-tertiary);

@@ -57,7 +57,7 @@ impl JsonlReader {
                 continue; // Skip empty lines
             }
 
-            if self.line_number.is_multiple_of(1000) {
+            if self.line_number % 1000 == 0 {
                 tracing::debug!(
                     "{}:{} offset={}",
                     self.path.display(),

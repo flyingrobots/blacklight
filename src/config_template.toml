@@ -1,0 +1,39 @@
+# Blacklight configuration file
+# All values shown below are defaults — uncomment and change as needed.
+# CLI flags and environment variables override these settings.
+
+# Path to the SQLite database (~ is expanded)
+# db = "~/.blacklight/blacklight.db"
+
+# Path to the Claude data directory (~ is expanded)
+# claude_dir = "~/.claude/"
+
+# Log level: trace, debug, info, warn, error
+# RUST_LOG env var takes precedence over this setting
+# log_level = "info"
+
+# [server]
+# port = 3141
+# no_open = false
+
+# [indexer]
+# verbose = false
+# skip_dirs = ["cache", "statsig", "shell-snapshots", "session-env", "ide", "paste-cache", "debug", "telemetry"]
+
+# [enrichment]
+# concurrency = 5
+# auto_approve_threshold = 0.80
+# ollama_url = "http://localhost:11434"
+# ollama_model = ""
+# google_api_key = ""
+# preferred_backend = "auto"   # auto | ollama | gemini | claude-cli
+
+# [scheduler]
+# enabled = true
+# interval_minutes = 60
+# run_enrichment = true
+# enrichment_concurrency = 5
+
+# [sqlite]
+# cache_size_mb = 64
+# mmap_size_mb = 256

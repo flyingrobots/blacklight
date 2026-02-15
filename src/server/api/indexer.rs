@@ -67,6 +67,7 @@ async fn start(
     let db_path = state.db.db_path().to_path_buf();
     let full = params.full;
     let notify_tx = state.notifications.clone();
+    let skip_dirs = state.config.indexer.skip_dirs.clone();
 
     drop(guard); // Release lock before spawning
 
@@ -78,6 +79,7 @@ async fn start(
             db_path,
             full,
             verbose: false,
+            skip_dirs,
             progress: Some(progress),
             cancel_flag: Some(cancel_flag.clone()),
             pause_flag: Some(pause_flag),

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::config::BlacklightConfig;
 use crate::enrich::{EnrichProgress, EnrichReport};
 use crate::indexer::{IndexProgress, IndexReport};
 use crate::notifications::NotificationSender;
@@ -174,6 +175,7 @@ pub struct SchedulerHandle {
 pub struct AppState {
     pub db: Arc<DbPool>,
     pub source_dir: PathBuf,
+    pub config: Arc<BlacklightConfig>,
     pub indexer: Arc<tokio::sync::Mutex<IndexerState>>,
     pub enricher: Arc<tokio::sync::Mutex<EnricherState>>,
     pub scheduler: Arc<tokio::sync::Mutex<Option<SchedulerHandle>>>,

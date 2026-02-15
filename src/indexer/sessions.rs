@@ -141,11 +141,11 @@ mod tests {
                     "messageCount": 10,
                     "created": "2024-01-01T00:00:00Z",
                     "modified": "2024-01-02T00:00:00Z",
-                    "projectPath": "/Users/james/git/myproject",
+                    "projectPath": "/home/user/projects/myproject",
                     "gitBranch": "main"
                 }
             ],
-            "originalPath": "/Users/james/git/fallback"
+            "originalPath": "/home/user/projects/fallback"
         }"#;
 
         let index_path = tmp.path().join("sessions-index.json");
@@ -174,7 +174,7 @@ mod tests {
             &conn,
             "sess-new",
             "test.jsonl",
-            Some("/Users/james/git/project"),
+            Some("/home/user/projects/project"),
             Some("feature-branch"),
             "2024-01-01T00:00:00Z",
         )
