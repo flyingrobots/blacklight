@@ -26,6 +26,27 @@ Blacklight gives you:
 - **Storage analysis** — content deduplication stats, blob store breakdown by kind
 - **Real-time controls** — start/stop/pause indexing and enrichment from the web UI with live progress
 
+### Screenshots
+
+| Dashboard | Sessions | Analytics |
+|-----------|----------|-----------|
+| ![Dashboard](screenshots/dashboard-slate.png) | ![Sessions](screenshots/sessions-slate.png) | ![Analytics](screenshots/analytics-slate.png) |
+
+| Session Detail | Search | Projects |
+|----------------|--------|----------|
+| ![Session Detail](screenshots/session-detail-slate.png) | ![Search](screenshots/search-slate.png) | ![Projects](screenshots/projects-slate.png) |
+
+<details>
+<summary>Theme gallery (Slate / Indigo / Orchid)</summary>
+
+| Slate | Indigo | Orchid |
+|-------|--------|--------|
+| ![](screenshots/dashboard-slate.png) | ![](screenshots/dashboard-indigo.png) | ![](screenshots/dashboard-orchid.png) |
+| ![](screenshots/sessions-slate.png) | ![](screenshots/sessions-indigo.png) | ![](screenshots/sessions-orchid.png) |
+| ![](screenshots/analytics-slate.png) | ![](screenshots/analytics-indigo.png) | ![](screenshots/analytics-orchid.png) |
+
+</details>
+
 ## Quick Start
 
 ```bash
@@ -133,9 +154,11 @@ Nine pages accessible from the nav:
 | **Storage** | Blob store stats, dedup ratio, content breakdown by kind |
 | **Review** | Approval queue for AI-generated enrichments — approve, reject, or bulk approve |
 
-The **IndexerHUD** (bottom-right widget) lets you control indexing and enrichment without leaving the page — start, pause, resume, stop, view logs, and configure the background scheduler.
+The **IndexerHUD** (bottom-right widget) lets you control indexing and enrichment without leaving the page — start, pause, resume, stop, view logs, and configure the background scheduler. Shows live "X/Y files indexed" and "X/Y sessions enriched" counts with "Last updated" timestamps.
 
 Real-time **WebSocket notifications** push status updates to the browser as indexing and enrichment progress.
+
+**Three color themes** — Slate (purple/violet), Indigo (deep blue/teal), and Orchid (pink/magenta). Switch via the dots next to the search bar. Choice persists in localStorage.
 
 ## AI Enrichment
 
