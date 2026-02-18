@@ -327,6 +327,9 @@ mod tests {
             cwd: None,
             git_branch: None,
             duration_ms: None,
+            turn_index: Some(0),
+            source_name: Some("test".into()),
+            fingerprint: Some("fp1".into()),
         });
         ops.blobs.push((
             "abc123".into(),

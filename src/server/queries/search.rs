@@ -11,11 +11,16 @@ pub fn search_content(
     limit: i64,
     offset: i64,
 ) -> Result<Paginated<SearchHit>> {
+    // Sanitize query: wrap in double quotes and escape internal quotes to prevent 
+    // FTS5 from interpreting special characters (like :) as column filters or operators.
+    let escaped_query = query.replace('\"', "\"\"");
+    let quoted_query = format!("\"{}\"", escaped_query);
+
     // Build the FTS5 match expression
     let match_expr = if let Some(k) = kind {
-        format!("kind:{k} AND content:{query}")
+        format!("kind:{k} AND content:{quoted_query}")
     } else {
-        query.to_string()
+        quoted_query
     };
 
     // Count total matches

@@ -430,6 +430,69 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         p.phase = "Phase 3: Structured data".to_string();
     });
 
+    // Tasks
+    if !task_files.is_empty() {
+        let entries: Vec<_> = task_files.iter().map(|(_, _, _, e, _)| e.clone()).collect();
+        match structured::parse_tasks(&conn, &entries) {
+            Ok(count) => report.tasks_parsed = count,
+            Err(e) => {
+                let msg = format!("Failed to parse tasks: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
+        }
+    }
+
+    // Facets
+    if !facet_files.is_empty() {
+        let entries: Vec<_> = facet_files.iter().map(|(_, _, _, e, _)| e.clone()).collect();
+        match structured::parse_facets(&conn, &entries) {
+            Ok(count) => report.facets_parsed = count,
+            Err(e) => {
+                let msg = format!("Failed to parse facets: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
+        }
+    }
+
+    // Stats cache
+    if let Some((_, _, _, entry, _)) = &stats_cache_path {
+        match structured::parse_stats_cache(&conn, &entry.path) {
+            Ok(()) => {}
+            Err(e) => {
+                let msg = format!("Failed to parse stats-cache: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
+        }
+    }
+
+    // Plans
+    if !plan_files.is_empty() {
+        let entries: Vec<_> = plan_files.iter().map(|(_, _, _, e, _)| e.clone()).collect();
+        match structured::parse_plans(&conn, &entries) {
+            Ok(count) => report.plans_parsed = count,
+            Err(e) => {
+                let msg = format!("Failed to parse plans: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
+        }
+    }
+
+    // History
+    if let Some((_, _, _, entry, _)) = &history_path {
+        match structured::parse_history(&conn, &entry.path) {
+            Ok(count) => report.history_entries = count,
+            Err(e) => {
+                let msg = format!("Failed to parse history: {e}");
+                tracing::warn!("{msg}");
+                notify_warn(&config, msg);
+            }
+        }
+    }
+
     let other_files = session_indexes.iter()
         .chain(task_files.iter())
         .chain(facet_files.iter())

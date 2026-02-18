@@ -555,8 +555,9 @@ fn test_realistic_multi_session_index() {
 
     // ===== RUN THE INDEXER =====
     let report = indexer::run_index(IndexConfig {
-        claude_dir: claude_dir.clone(),
-        extra_dirs: vec![],
+        sources: vec![("claude".to_string(), claude_dir.clone(), blacklight::config::SourceKind::Claude, Some("claude".to_string()))],
+        backup_dir: tmp.path().join("backups"),
+        backup_mode: blacklight::config::BackupMode::Simple,
         db_path: db_path.clone(),
         full: false,
         verbose: true,
@@ -873,8 +874,9 @@ fn test_incremental_index() {
 
     // First run
     let r1 = indexer::run_index(IndexConfig {
-        claude_dir: claude_dir.clone(),
-        extra_dirs: vec![],
+        sources: vec![("claude".to_string(), claude_dir.clone(), blacklight::config::SourceKind::Claude, Some("claude".to_string()))],
+        backup_dir: tmp.path().join("backups"),
+        backup_mode: blacklight::config::BackupMode::Simple,
         db_path: db_path.clone(),
         full: false,
         verbose: false,
@@ -890,8 +892,9 @@ fn test_incremental_index() {
 
     // Second run — nothing should change
     let r2 = indexer::run_index(IndexConfig {
-        claude_dir,
-        extra_dirs: vec![],
+        sources: vec![("claude".to_string(), claude_dir, blacklight::config::SourceKind::Claude, Some("claude".to_string()))],
+        backup_dir: tmp.path().join("backups"),
+        backup_mode: blacklight::config::BackupMode::Simple,
         db_path,
         full: false,
         verbose: false,
@@ -936,8 +939,9 @@ fn test_fts_search_after_indexing() {
     create_file(&claude_dir, "history.jsonl", &hist);
 
     let report = indexer::run_index(IndexConfig {
-        claude_dir,
-        extra_dirs: vec![],
+        sources: vec![("claude".to_string(), claude_dir, blacklight::config::SourceKind::Claude, Some("claude".to_string()))],
+        backup_dir: tmp.path().join("backups"),
+        backup_mode: blacklight::config::BackupMode::Simple,
         db_path: db_path.clone(),
         full: false,
         verbose: false,
@@ -993,8 +997,9 @@ fn test_full_reindex() {
 
     // First run
     let r1 = indexer::run_index(IndexConfig {
-        claude_dir: claude_dir.clone(),
-        extra_dirs: vec![],
+        sources: vec![("claude".to_string(), claude_dir.clone(), blacklight::config::SourceKind::Claude, Some("claude".to_string()))],
+        backup_dir: tmp.path().join("backups"),
+        backup_mode: blacklight::config::BackupMode::Simple,
         db_path: db_path.clone(),
         full: false,
         verbose: false,
@@ -1009,8 +1014,9 @@ fn test_full_reindex() {
 
     // Second run with --full
     let r2 = indexer::run_index(IndexConfig {
-        claude_dir,
-        extra_dirs: vec![],
+        sources: vec![("claude".to_string(), claude_dir, blacklight::config::SourceKind::Claude, Some("claude".to_string()))],
+        backup_dir: tmp.path().join("backups"),
+        backup_mode: blacklight::config::BackupMode::Simple,
         db_path,
         full: true,
         verbose: false,
@@ -1059,8 +1065,9 @@ fn test_summary_first_in_jsonl() {
     );
 
     let report = indexer::run_index(IndexConfig {
-        claude_dir,
-        extra_dirs: vec![],
+        sources: vec![("claude".to_string(), claude_dir, blacklight::config::SourceKind::Claude, Some("claude".to_string()))],
+        backup_dir: tmp.path().join("backups"),
+        backup_mode: blacklight::config::BackupMode::Simple,
         db_path: db_path.clone(),
         full: false,
         verbose: false,

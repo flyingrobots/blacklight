@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 - **Provenance UI:** Origin and fingerprint details are now visible in session list and detail views.
 - **Materialized Cache:** Snappy raw file viewing in the UI even when restoring from Git CAS.
 
+### Fixed
+- **FTS5 Search Sanitization:** Fixed "no such column" error when searching for terms containing colons or hyphens (like CAS prefixes).
+- **Indexer Phase 3:** Restored structured data parsing (tasks, facets, plans) that was bypassed during multi-source refactor.
+- **Test Suite:** Updated and stabilized entire test suite for schema v4 and multi-source configuration.
+
 ### Changed
 - Refactored `BlacklightConfig` to support a `sources` array with custom `cas_prefix` per source.
 - Updated database schema to version 4 to include provenance, fingerprint, and backup tracking.

@@ -14,11 +14,7 @@ CREATE TABLE sessions (
     git_branch TEXT,
     claude_version TEXT,
     is_sidechain INTEGER DEFAULT 0,
-    source_file TEXT NOT NULL,
-    source_name TEXT,
-    source_kind TEXT,
-    app_version TEXT,
-    fingerprint TEXT  -- BLAKE3 hash of session content (Merkle root of messages)
+    source_file TEXT NOT NULL
 );
 
 -- Individual messages (from session JSONL)
@@ -32,10 +28,7 @@ CREATE TABLE messages (
     stop_reason TEXT,
     cwd TEXT,
     git_branch TEXT,
-    duration_ms INTEGER,
-    turn_index INTEGER,
-    source_name TEXT,
-    fingerprint TEXT  -- BLAKE3 hash of turn content (content blocks + metadata)
+    duration_ms INTEGER
 );
 
 -- Content blocks within messages (flattened from message.content[])
@@ -58,17 +51,7 @@ CREATE TABLE tool_calls (
     tool_name TEXT NOT NULL,
     input_hash TEXT REFERENCES content_store(hash),
     output_hash TEXT REFERENCES content_store(hash),
-    timestamp TEXT NOT NULL,
-    fingerprint TEXT  -- BLAKE3 hash of tool call (name + input + output)
-);
-
--- Track file backups for transient sources (like Gemini tmp dirs) using CAS
-CREATE TABLE session_backups (
-    session_id TEXT PRIMARY KEY REFERENCES sessions(id),
-    original_path TEXT NOT NULL,
-    content_hash TEXT NOT NULL, -- The hash used for CAS storage
-    backed_up_at TEXT NOT NULL,
-    file_size INTEGER NOT NULL
+    timestamp TEXT NOT NULL
 );
 
 -- Content-addressable blob store
