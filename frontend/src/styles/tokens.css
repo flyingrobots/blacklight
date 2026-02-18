@@ -1,0 +1,56 @@
+/* Open Props imports — only what we reference */
+@import 'open-props/gray';
+@import 'open-props/green';
+@import 'open-props/red';
+@import 'open-props/yellow';
+@import 'open-props/sizes';
+@import 'open-props/fonts';
+
+/* ── Design Tokens ───────────────────────────────────── */
+
+:root {
+  /* Spacing */
+  --bl-space-xs:  var(--size-1);   /* 0.25rem */
+  --bl-space-sm:  var(--size-2);   /* 0.5rem  */
+  --bl-space-md:  var(--size-3);   /* 1rem    */
+  --bl-space-lg:  var(--size-4);   /* 1.5rem  */
+  --bl-space-xl:  var(--size-5);   /* 2rem    */
+  --bl-space-2xl: var(--size-6);   /* 3rem    */
+  --bl-space-1:   0.375rem;        /* gap filler */
+  --bl-space-2:   0.75rem;         /* gap filler */
+
+  /* Font size */
+  --bl-text-2xs:  var(--font-size-00); /* 0.625rem */
+  --bl-text-xs:   var(--font-size-0);  /* 0.75rem  */
+  --bl-text-sm:   0.8125rem;
+  --bl-text-md:   0.875rem;
+  --bl-text-base: var(--font-size-1);  /* 1rem     */
+  --bl-text-lg:   var(--font-size-2);  /* 1.25rem  */
+  --bl-text-xl:   var(--font-size-3);  /* 1.5rem   */
+
+  /* Border radius */
+  --bl-radius-sm:   4px;
+  --bl-radius-md:   6px;
+  --bl-radius-lg:   8px;
+  --bl-radius-xl:   12px;
+  --bl-radius-pill:  9999px;
+  --bl-radius-round: 50%;
+
+  /* Shadows */
+  --bl-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --bl-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --bl-shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.5);
+
+  /* Semantic colors — defaults (overridden by theme switcher at runtime) */
+  --bl-bg:           #0d1117;
+  --bl-bg-2:         #161b22;
+  --bl-bg-3:         #21262d;
+  --bl-border:       #30363d;
+  --bl-text:         #e6edf3;
+  --bl-text-2:       #8b949e;
+  --bl-accent:       #58a6ff;
+  --bl-accent-hover: #79c0ff;
+  --bl-success:      var(--green-5);
+  --bl-warning:      var(--yellow-5);
+  --bl-danger:       var(--red-5);
+  --bl-purple:       #bc8cff;}

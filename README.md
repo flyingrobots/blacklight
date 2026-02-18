@@ -92,53 +92,55 @@ blacklight stats                    # usage overview
 
 Global options: `--db <path>`, `--claude-dir <path>`, `--config <path>` (defaults to `~/.blacklight/blacklight.toml`).
 
-## Configuration
+## Multi-LLM Configuration
 
-Blacklight reads `~/.blacklight/blacklight.toml` if it exists. Generate a starter file with all defaults commented out:
-
-```bash
-blacklight init
-```
-
-**Priority chain:** CLI flags > environment variables > config file > defaults.
+Blacklight 0.2.0 supports indexing from multiple sources simultaneously. Configure them in `~/.blacklight/blacklight.toml`:
 
 ```toml
 # ~/.blacklight/blacklight.toml
 
-db = "~/.blacklight/blacklight.db"
-claude_dir = "~/.claude/"
-log_level = "info"
+backup_dir = "~/.blacklight/backups/"
+backup_mode = "gitcas" # gitcas | simple
 
-[server]
-port = 3141
-no_open = false
+[[sources]]
+name = "claude-work"
+path = "~/.claude/"
+kind = "claude"
+cas_prefix = "work"
 
-[indexer]
-verbose = false
-skip_dirs = ["cache", "statsig", "shell-snapshots", "session-env", "ide", "paste-cache", "debug", "telemetry"]
+[[sources]]
+name = "personal-gemini"
+path = "~/.gemini/"
+kind = "gemini"
+cas_prefix = "me"
 
-[enrichment]
-concurrency = 5
-auto_approve_threshold = 0.80
-ollama_url = "http://localhost:11434"
-ollama_model = ""
-google_api_key = ""
-preferred_backend = "auto"   # auto | ollama | gemini | claude-cli
-
-[scheduler]
-enabled = true
-interval_minutes = 60
-run_enrichment = true
-enrichment_concurrency = 5
-
-[sqlite]
-cache_size_mb = 64
-mmap_size_mb = 256
+[[sources]]
+name = "codex-exp"
+path = "~/.codex/"
+kind = "codex"
 ```
 
-Everything is optional — omit any key and the default applies. `RUST_LOG` still overrides `log_level`; `GOOGLE_API_KEY` and `OLLAMA_MODEL` env vars still override their config file counterparts.
+**Supported kinds:** `claude`, `gemini`, `codex`.
 
-## Web Dashboard
+## Upgrading from V3 to V4
+
+If you are upgrading from an older version of Blacklight, you need to migrate your data to the new bit-perfect provenance standard:
+
+1. **Launch the dashboard:** Run `./blacklight serve`.
+2. **Open the HUD:** Click the pill in the bottom-right corner.
+3. **Go to Migration:** Select the "Migration" tab.
+4. **Start Migration:** Click "Start Migration".
+
+This process will:
+- **Backup:** Copy all your existing session files into the CAS.
+- **Fingerprint:** Calculate cryptographic signatures for every turn and session.
+- **Verify:** Ensure your history is bit-perfect and immutable.
+
+## Architecture
+
+Blacklight treats LLM logs as an immutable "Causal Memory." See [ARCHITECTURE.md](./ARCHITECTURE.md) for a deep dive into ingest, provenance, and the CAS layer.
+
+## Tech Stack
 
 Nine pages accessible from the nav:
 

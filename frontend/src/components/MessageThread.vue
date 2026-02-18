@@ -55,30 +55,30 @@ function roleLabel(msg: MessageDetail): string {
 <style scoped>
 .message-thread { display: flex; flex-direction: column; gap: 1rem; }
 .message {
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   overflow: hidden;
 }
-.message.user { border-left: 3px solid var(--accent); }
-.message.assistant { border-left: 3px solid var(--success); }
-.message.tool-result { border-left: 3px solid var(--border); opacity: 0.85; }
-.message.system { border-left: 3px solid var(--warning); }
-.message.summary { border-left: 3px solid var(--purple); }
+.message.user { border-left: 3px solid var(--bl-accent); }
+.message.assistant { border-left: 3px solid var(--bl-success); }
+.message.tool-result { border-left: 3px solid var(--bl-border); opacity: 0.85; }
+.message.system { border-left: 3px solid var(--bl-warning); }
+.message.summary { border-left: 3px solid var(--bl-purple); }
 .message-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 1rem;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.75rem;
+  background: var(--bl-bg-2);
+  border-bottom: 1px solid var(--bl-border);
+  font-size: var(--bl-text-xs);
 }
-.tool-result .message-header { background: var(--bg); }
+.tool-result .message-header { background: var(--bl-bg); }
 .role { font-weight: 600; }
-.model { color: var(--text-secondary); }
-.time { color: var(--text-secondary); }
-.duration { color: var(--text-secondary); }
+.model { color: var(--bl-text-2); }
+.time { color: var(--bl-text-2); }
+.duration { color: var(--bl-text-2); }
 .message-body { padding: 0.75rem 1rem; }
-.empty-msg { color: var(--text-secondary); font-size: 0.8125rem; font-style: italic; }
-.empty { color: var(--text-secondary); padding: 2rem; text-align: center; }
+.empty-msg { color: var(--bl-text-2); font-size: var(--bl-text-sm); font-style: italic; }
+.empty { color: var(--bl-text-2); padding: 2rem; text-align: center; }
 </style>

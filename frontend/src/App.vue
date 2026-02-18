@@ -234,24 +234,24 @@ onUnmounted(() => {
 .nav-links li a {
   display: block;
   padding: 0.4rem 0.9rem;
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
+  border-radius: var(--bl-radius-sm);
+  color: var(--bl-text-2);
+  font-size: var(--bl-text-sm);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   transition: color 0.15s, background 0.15s;
 }
 .nav-links li a:hover {
-  color: var(--text);
-  background: var(--bg-tertiary);
+  color: var(--bl-text);
+  background: var(--bl-bg-3);
   text-decoration: none;
 }
 .nav-links li a.router-link-active {
-  color: var(--accent, #0af);
-  background: var(--bg-tertiary);
+  color: var(--bl-accent);
+  background: var(--bl-bg-3);
   text-decoration: none;
-  box-shadow: inset 0 -2px 0 var(--accent, #0af);
+  box-shadow: inset 0 -2px 0 var(--bl-accent);
 }
 
 /* Header search */
@@ -263,11 +263,11 @@ onUnmounted(() => {
   padding: 0 2rem 1.25rem;
 }
 .nav-search .search-input {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 0.875rem;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-md);
+  color: var(--bl-text);
+  font-size: var(--bl-text-md);
   padding: 0.5rem 1rem;
   width: 100%;
   max-width: 480px;
@@ -275,10 +275,10 @@ onUnmounted(() => {
   transition: border-color 0.15s;
 }
 .nav-search .search-input:focus {
-  border-color: var(--accent, #0af);
+  border-color: var(--bl-accent);
 }
 .nav-search .search-input::placeholder {
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   opacity: 0.6;
 }
 

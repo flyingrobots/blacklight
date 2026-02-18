@@ -41,15 +41,15 @@ function applyTheme(palette: ThemePalette) {
 
   // Map the 5-color palette to CSS variables
   // c1 = muted base, c2 = primary accent, c3 = accent hover, c4 = secondary accent, c5 = soft highlight
-  root.style.setProperty('--accent', c3)
-  root.style.setProperty('--accent-hover', c4)
-  root.style.setProperty('--purple', c5)
+  root.style.setProperty('--bl-accent', c3)
+  root.style.setProperty('--bl-accent-hover', c4)
+  root.style.setProperty('--bl-purple', c5)
 
   // Derive tinted backgrounds from the darkest color
-  root.style.setProperty('--bg', blendDark(c1, 0.06))
-  root.style.setProperty('--bg-secondary', blendDark(c1, 0.10))
-  root.style.setProperty('--bg-tertiary', blendDark(c1, 0.15))
-  root.style.setProperty('--border', blendDark(c2, 0.18))
+  root.style.setProperty('--bl-bg', blendDark(c1, 0.06))
+  root.style.setProperty('--bl-bg-2', blendDark(c1, 0.10))
+  root.style.setProperty('--bl-bg-3', blendDark(c1, 0.15))
+  root.style.setProperty('--bl-border', blendDark(c2, 0.18))
 }
 
 /** Blend a hex color toward black at the given lightness (0..1). */

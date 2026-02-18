@@ -103,9 +103,9 @@ watch(() => props.data, renderChart)
 <style scoped>
 .daily-chart {
   height: 300px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   padding: 1rem;
 }
 </style>

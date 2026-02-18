@@ -36,9 +36,9 @@ function truncate(text: string, maxLen: number): string {
 
 <style scoped>
 .tool-call-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   overflow: hidden;
 }
 .tc-header {
@@ -46,23 +46,23 @@ function truncate(text: string, maxLen: number): string {
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 0.75rem;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border);
+  background: var(--bl-bg-3);
+  border-bottom: 1px solid var(--bl-border);
 }
-.tc-name { font-weight: 600; color: var(--accent); font-size: 0.875rem; }
-.tc-time { font-size: 0.75rem; color: var(--text-secondary); }
-.tc-section { border-top: 1px solid var(--border); }
+.tc-name { font-weight: 600; color: var(--bl-accent); font-size: var(--bl-text-md); }
+.tc-time { font-size: var(--bl-text-xs); color: var(--bl-text-2); }
+.tc-section { border-top: 1px solid var(--bl-border); }
 .tc-section:first-of-type { border-top: none; }
 .tc-label {
   padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
+  font-size: var(--bl-text-xs);
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   text-transform: uppercase;
 }
 .tc-content {
   padding: 0.25rem 0.75rem 0.5rem;
-  font-size: 0.8125rem;
+  font-size: var(--bl-text-sm);
   max-height: 300px;
   overflow-y: auto;
   background: none;

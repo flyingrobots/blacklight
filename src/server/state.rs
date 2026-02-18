@@ -80,6 +80,41 @@ pub enum IndexerStatus {
     Cancelled,
 }
 
+/// Migration run status.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MigrationStatus {
+    #[default]
+    Idle,
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct MigrationProgress {
+    pub total_sessions: usize,
+    pub backed_up: usize,
+    pub fingerprints_updated: usize,
+}
+
+/// Shared migration state accessible from API handlers.
+pub struct MigrationState {
+    pub status: MigrationStatus,
+    pub progress: Arc<Mutex<MigrationProgress>>,
+    pub error_message: Option<String>,
+}
+
+impl Default for MigrationState {
+    fn default() -> Self {
+        Self {
+            status: MigrationStatus::Idle,
+            progress: Arc::new(Mutex::new(MigrationProgress::default())),
+            error_message: None,
+        }
+    }
+}
+
 /// Shared indexer state accessible from API handlers.
 pub struct IndexerState {
     pub status: IndexerStatus,
@@ -174,10 +209,10 @@ pub struct SchedulerHandle {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<DbPool>,
-    pub source_dir: PathBuf,
     pub config: Arc<BlacklightConfig>,
     pub indexer: Arc<tokio::sync::Mutex<IndexerState>>,
     pub enricher: Arc<tokio::sync::Mutex<EnricherState>>,
+    pub migration: Arc<tokio::sync::Mutex<MigrationState>>,
     pub scheduler: Arc<tokio::sync::Mutex<Option<SchedulerHandle>>>,
     pub notifications: NotificationSender,
 }

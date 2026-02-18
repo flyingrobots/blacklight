@@ -129,6 +129,41 @@
         </div>
       </div>
 
+      <!-- MIGRATION TAB -->
+      <div v-if="activeTab === 'Migration'">
+        <div class="hud-status-row">
+          <span :class="['status-badge', `status-${migrationStatus.status}`]">{{ migrationStatus.status }}</span>
+        </div>
+
+        <div class="hud-summary-row">
+          <span>V3 to V4 Migration</span>
+        </div>
+
+        <div v-if="migrationIsActive" class="hud-progress">
+          <div class="progress-phase">Backing up and fingerprinting...</div>
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: migrationPct + '%' }"></div>
+          </div>
+          <div class="progress-stats">
+            <span>{{ migrationStatus.progress.fingerprints_updated }}/{{ migrationStatus.progress.total_sessions }} sessions</span>
+            <span>{{ migrationStatus.progress.backed_up }} backed up</span>
+          </div>
+        </div>
+
+        <div class="hud-controls">
+          <button v-if="!migrationIsActive" class="btn btn-primary" @click="doMigrationStart">Start Migration</button>
+          <span v-else class="migration-running-msg">Migration in progress...</span>
+        </div>
+
+        <div v-if="migrationStatus.error_message" class="hud-error">
+          {{ migrationStatus.error_message }}
+        </div>
+        
+        <div class="hud-info-box">
+          Migration ensures all sessions are backed up to CAS and cryptographically fingerprinted.
+        </div>
+      </div>
+
       <!-- LOGS TAB -->
       <div v-if="activeTab === 'Logs'" class="hud-logs-tab">
         <div class="logs-section" v-if="enricherLogs.length">
@@ -189,7 +224,7 @@ gsap.registerPlugin(Flip)
 
 const hudRef = ref<HTMLElement>()
 const expanded = ref(false)
-const tabs = ['Indexer', 'Enrichment', 'Logs', 'Schedule'] as const
+const tabs = ['Indexer', 'Enrichment', 'Migration', 'Logs', 'Schedule'] as const
 type Tab = typeof tabs[number]
 const activeTab = ref<Tab>('Indexer')
 
@@ -216,6 +251,12 @@ const enricherStatus = ref<EnricherStatusResponse>({
   error_message: null,
 })
 
+const migrationStatus = ref<import('@/types').MigrationStatusResponse>({
+  status: 'idle',
+  progress: { total_sessions: 0, backed_up: 0, fingerprints_updated: 0 },
+  error_message: null,
+})
+
 const scheduleForm = ref({
   enabled: true,
   interval_minutes: 60,
@@ -231,9 +272,11 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const indexerIsActive = computed(() => indexerStatus.value.status === 'running')
 const enricherIsActive = computed(() => enricherStatus.value.status === 'running')
-const anyActive = computed(() => indexerIsActive.value || enricherIsActive.value)
+const migrationIsActive = computed(() => migrationStatus.value.status === 'running')
+const anyActive = computed(() => indexerIsActive.value || enricherIsActive.value || migrationIsActive.value)
 
 const activeStatus = computed(() => {
+  if (migrationIsActive.value) return migrationStatus.value.status
   if (enricherIsActive.value) return enricherStatus.value.status
   return indexerStatus.value.status
 })
@@ -248,6 +291,12 @@ const enricherPct = computed(() => {
   const s = enricherStatus.value
   if (s.sessions_total === 0) return 0
   return Math.min(100, ((s.sessions_done + s.sessions_failed) / s.sessions_total) * 100)
+})
+
+const migrationPct = computed(() => {
+  const s = migrationStatus.value.progress
+  if (s.total_sessions === 0) return 0
+  return Math.min(100, (s.fingerprints_updated / s.total_sessions) * 100)
 })
 
 const enrichmentSummary = computed(() => {
@@ -267,6 +316,9 @@ function timeAgo(date: Date): string {
 }
 
 const pillLabel = computed(() => {
+  if (migrationIsActive.value) {
+    return `Migrating ${migrationPct.value.toFixed(0)}%`
+  }
   if (enricherIsActive.value) {
     const pct = enricherPct.value
     return `Enriching ${pct.toFixed(0)}%`
@@ -316,6 +368,9 @@ async function pollStatus() {
       enricherLastUpdated.value = timeAgo(new Date())
       fetchCoverageAndOverview()
     }
+  } catch { /* ignore */ }
+  try {
+    migrationStatus.value = await api.migration.status()
   } catch { /* ignore */ }
   // Fetch logs when the Logs tab is visible
   if (expanded.value && activeTab.value === 'Logs') {
@@ -423,6 +478,19 @@ async function doEnrichStop() {
   }
 }
 
+// Migration actions
+async function doMigrationStart() {
+  try {
+    await api.migration.start()
+    migrationStatus.value.status = 'running'
+    migrationStatus.value.progress = { total_sessions: 0, backed_up: 0, fingerprints_updated: 0 }
+    migrationStatus.value.error_message = null
+    startPolling()
+  } catch (e: any) {
+    migrationStatus.value.error_message = e.message
+  }
+}
+
 // Fetch logs immediately when switching to Logs tab
 watch(activeTab, async (tab) => {
   if (tab === 'Logs') {
@@ -472,7 +540,7 @@ onUnmounted(() => {
   bottom: 1.5rem;
   right: 1.5rem;
   z-index: 9000;
-  font-size: 0.8125rem;
+  font-size: var(--bl-text-sm);
 }
 
 /* Collapsed pill */
@@ -483,24 +551,24 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 20px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-pill);
   padding: 0.4rem 0.75rem;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--bl-shadow-sm);
   transition: border-color 0.2s;
   white-space: nowrap;
 }
 .hud-collapsed:hover .hud-pill {
-  border-color: var(--accent);
+  border-color: var(--bl-accent);
 }
 .hud-status-running .hud-pill,
 .hud-status-paused .hud-pill {
-  border-color: var(--accent);
+  border-color: var(--bl-accent);
 }
 .hud-icon {
-  font-size: 1rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-base);
+  color: var(--bl-text-2);
   line-height: 1;
 }
 .hud-icon-paused {
@@ -509,8 +577,8 @@ onUnmounted(() => {
   letter-spacing: -2px;
 }
 .hud-pill-text {
-  color: var(--text-secondary);
-  font-size: 0.75rem;
+  color: var(--bl-text-2);
+  font-size: var(--bl-text-xs);
   font-weight: 500;
 }
 
@@ -519,9 +587,9 @@ onUnmounted(() => {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
+  border: 2px solid var(--bl-border);
+  border-top-color: var(--bl-accent);
+  border-radius: var(--bl-radius-round);
   animation: hud-spin 0.8s linear infinite;
 }
 @keyframes hud-spin {
@@ -530,12 +598,12 @@ onUnmounted(() => {
 
 /* Expanded card */
 .hud-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-xl);
   padding: 1rem;
   width: 360px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--bl-shadow-lg);
 }
 .hud-card-header {
   display: flex;
@@ -547,14 +615,14 @@ onUnmounted(() => {
 .hud-close {
   background: none;
   border: none;
-  color: var(--text-secondary);
-  font-size: 1.25rem;
+  color: var(--bl-text-2);
+  font-size: var(--bl-text-lg);
   cursor: pointer;
   padding: 0 0.25rem;
   line-height: 1;
 }
 .hud-close:hover {
-  color: var(--text);
+  color: var(--bl-text);
 }
 
 /* Tabs */
@@ -565,21 +633,21 @@ onUnmounted(() => {
 .hud-tab {
   background: none;
   border: none;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
+  color: var(--bl-text-2);
+  font-size: var(--bl-text-xs);
   font-weight: 500;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--bl-radius-sm);
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
 }
 .hud-tab:hover {
-  color: var(--text);
-  background: var(--bg-tertiary);
+  color: var(--bl-text);
+  background: var(--bl-bg-3);
 }
 .hud-tab.active {
-  color: var(--accent);
-  background: var(--bg-tertiary);
+  color: var(--bl-accent);
+  background: var(--bl-bg-3);
 }
 
 /* Status row */
@@ -592,16 +660,16 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
   margin-bottom: 0.75rem;
   padding: 0.375rem 0.5rem;
-  background: var(--bg-tertiary);
-  border-radius: 6px;
+  background: var(--bl-bg-3);
+  border-radius: var(--bl-radius-md);
 }
 .hud-timestamp {
   font-size: 0.6875rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   opacity: 0.7;
 }
 
@@ -609,16 +677,16 @@ onUnmounted(() => {
 .status-badge {
   display: inline-block;
   padding: 0.2rem 0.6rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  border-radius: var(--bl-radius-xl);
+  font-size: var(--bl-text-xs);
   font-weight: 600;
   text-transform: uppercase;
 }
-.status-idle { background: var(--bg-tertiary); color: var(--text-secondary); }
+.status-idle { background: var(--bl-bg-3); color: var(--bl-text-2); }
 .status-running { background: #1d4ed8; color: #fff; }
 .status-paused { background: #d97706; color: #fff; }
-.status-completed { background: var(--success); color: #fff; }
-.status-failed { background: var(--danger); color: #fff; }
+.status-completed { background: var(--bl-success); color: #fff; }
+.status-failed { background: var(--bl-danger); color: #fff; }
 .status-cancelled { background: #d97706; color: #fff; }
 
 /* Progress */
@@ -626,20 +694,20 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
 }
 .progress-phase {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
   margin-bottom: 0.375rem;
 }
 .progress-bar {
   height: 6px;
-  background: var(--bg-tertiary);
+  background: var(--bl-bg-3);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 0.375rem;
 }
 .progress-fill {
   height: 100%;
-  background: var(--accent);
+  background: var(--bl-accent);
   border-radius: 3px;
   transition: width 0.5s ease;
 }
@@ -647,7 +715,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0.75rem;
   font-size: 0.6875rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
 }
 
 /* Controls */
@@ -659,30 +727,30 @@ onUnmounted(() => {
 .btn {
   padding: 0.3rem 0.65rem;
   border: none;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  border-radius: var(--bl-radius-md);
+  font-size: var(--bl-text-xs);
   font-weight: 500;
   cursor: pointer;
 }
-.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary { background: var(--bl-accent); color: #fff; }
 .btn-primary:hover { opacity: 0.9; }
-.btn-secondary { background: var(--bg-tertiary); color: var(--text); }
+.btn-secondary { background: var(--bl-bg-3); color: var(--bl-text); }
 .btn-secondary:hover { opacity: 0.85; }
 .btn-warning { background: #d97706; color: #fff; }
 .btn-warning:hover { opacity: 0.9; }
-.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger { background: var(--bl-danger); color: #fff; }
 .btn-danger:hover { opacity: 0.9; }
 
 /* Report */
 .hud-report {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--bl-border);
   padding-top: 0.5rem;
   margin-bottom: 0.25rem;
 }
 .report-title {
-  font-size: 0.75rem;
+  font-size: var(--bl-text-xs);
   font-weight: 500;
-  color: var(--text);
+  color: var(--bl-text);
   margin-bottom: 0.25rem;
 }
 .report-stats {
@@ -690,7 +758,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 0.5rem;
   font-size: 0.6875rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
 }
 
 /* Error */
@@ -698,9 +766,29 @@ onUnmounted(() => {
   margin-top: 0.5rem;
   padding: 0.375rem 0.5rem;
   background: rgba(239, 68, 68, 0.1);
-  border-radius: 4px;
-  font-size: 0.75rem;
-  color: var(--danger);
+  border-radius: var(--bl-radius-sm);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-danger);
+}
+
+.hud-info-box {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background: var(--bl-bg-3);
+  border-left: 3px solid var(--bl-accent);
+  border-radius: var(--bl-radius-sm);
+  font-size: 0.6875rem;
+  color: var(--bl-text-2);
+  line-height: 1.4;
+}
+
+.migration-running-msg {
+  font-size: var(--bl-text-xs);
+  color: var(--bl-accent);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 /* Logs */
@@ -712,7 +800,7 @@ onUnmounted(() => {
 .logs-section-title {
   font-size: 0.6875rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.25rem;
@@ -720,8 +808,8 @@ onUnmounted(() => {
 .hud-log-viewer {
   max-height: 200px;
   overflow-y: auto;
-  background: var(--bg-tertiary);
-  border-radius: 6px;
+  background: var(--bl-bg-3);
+  border-radius: var(--bl-radius-md);
   padding: 0.375rem 0.5rem;
   font-family: monospace;
   font-size: 0.6875rem;
@@ -730,14 +818,14 @@ onUnmounted(() => {
 .log-line {
   white-space: pre-wrap;
   word-break: break-all;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
 }
 .log-error {
-  color: var(--danger);
+  color: var(--bl-danger);
 }
 .logs-empty {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
   text-align: center;
   padding: 1rem 0;
 }
@@ -752,25 +840,25 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.8125rem;
-  color: var(--text);
+  font-size: var(--bl-text-sm);
+  color: var(--bl-text);
 }
 .schedule-row input[type="checkbox"] {
-  accent-color: var(--accent);
+  accent-color: var(--bl-accent);
 }
 .schedule-input {
   width: 80px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: 0.8125rem;
+  background: var(--bl-bg-3);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-sm);
+  color: var(--bl-text);
+  font-size: var(--bl-text-sm);
   padding: 0.25rem 0.4rem;
   text-align: right;
 }
 .schedule-saved {
-  font-size: 0.75rem;
-  color: var(--success);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-success);
   text-align: center;
 }
 </style>

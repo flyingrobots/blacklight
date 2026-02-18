@@ -1,8 +1,66 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use std::path::Path;
+use serde::Deserialize;
 
 use crate::models::SessionIndex;
+
+#[derive(Debug, Deserialize)]
+pub struct DesktopSessionIndex {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub cwd: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: u64,
+    #[serde(rename = "lastActivityAt")]
+    pub last_activity_at: u64,
+    pub model: Option<String>,
+    pub title: Option<String>,
+}
+
+/// Parse a Claude Desktop local_*.json file and upsert it into the sessions table.
+pub fn parse_desktop_session_index(conn: &Connection, path: &Path) -> Result<usize> {
+    let data = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+
+    let index: DesktopSessionIndex = serde_json::from_str(&data)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+
+    let source_file = path.to_string_lossy().to_string();
+    
+    let project_path = index.cwd.as_deref().unwrap_or("unknown");
+    let project_slug = project_path
+        .rsplit('/')
+        .next()
+        .unwrap_or("unknown")
+        .to_string();
+
+    let created = chrono::DateTime::from_timestamp(index.created_at as i64 / 1000, 0)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+    
+    let modified = chrono::DateTime::from_timestamp(index.last_activity_at as i64 / 1000, 0)
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| created.clone());
+
+    conn.execute(
+        "INSERT OR REPLACE INTO sessions
+         (id, project_path, project_slug, first_prompt, summary, created_at, modified_at, source_file, source_kind)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'claude')",
+        params![
+            index.session_id,
+            project_path,
+            project_slug,
+            index.title,
+            Option::<String>::None, // summary
+            created,
+            modified,
+            source_file,
+        ],
+    ).context("failed to insert desktop session index")?;
+
+    Ok(1)
+}
 
 /// Parse a sessions-index.json file and upsert all entries into the sessions table.
 /// Returns the count of upserted sessions.

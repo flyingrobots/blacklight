@@ -143,17 +143,17 @@ onMounted(fetchProjects)
 }
 .project-card {
   display: block;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   padding: 1rem;
   text-decoration: none;
-  color: var(--text);
+  color: var(--bl-text);
   transition: border-color 0.15s, background 0.15s;
 }
 .project-card:hover {
-  border-color: var(--accent);
-  background: var(--bg-tertiary);
+  border-color: var(--bl-accent);
+  background: var(--bl-bg-3);
 }
 .card-header {
   display: flex;
@@ -163,8 +163,8 @@ onMounted(fetchProjects)
 }
 .project-name {
   font-weight: 600;
-  font-size: 1rem;
-  color: var(--accent);
+  font-size: var(--bl-text-base);
+  color: var(--bl-accent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -172,19 +172,19 @@ onMounted(fetchProjects)
 }
 .session-count {
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   white-space: nowrap;
 }
 .card-stats {
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   margin-bottom: 0.25rem;
 }
 .card-dates {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
   margin-bottom: 0.75rem;
 }
 .tool-bar {
@@ -203,7 +203,7 @@ onMounted(fetchProjects)
   flex-wrap: wrap;
   gap: 0.5rem;
   font-size: 0.7rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
 }
 .legend-item {
   display: flex;
@@ -213,15 +213,15 @@ onMounted(fetchProjects)
 .legend-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--bl-radius-round);
   flex-shrink: 0;
 }
 .loading {
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   padding: 2rem 0;
 }
 .error {
-  color: var(--danger);
+  color: var(--bl-danger);
   padding: 1rem 0;
 }
 </style>

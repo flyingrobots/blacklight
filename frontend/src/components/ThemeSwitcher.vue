@@ -44,7 +44,7 @@ const { themes, currentThemeIndex, setTheme } = useTheme()
   transform: scale(1.2);
 }
 .theme-dot.active {
-  border-color: var(--text);
+  border-color: var(--bl-text);
 }
 .dot-inner {
   width: 10px;

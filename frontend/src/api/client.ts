@@ -4,7 +4,7 @@ import type {
   DailyStats, ModelUsage, ToolFrequency, ProjectBreakdown,
   ProjectDetail, OutcomeStats, StorageOverview, ContentBlob,
   IndexCoverage, IndexerStatusResponse, EnricherStatusResponse,
-  ReviewItem, ScheduleConfig
+  ReviewItem, ScheduleConfig, MigrationStatusResponse
 } from '@/types'
 
 const BASE = '/api'
@@ -123,5 +123,10 @@ export const api = {
     get: () => get<ScheduleConfig>(`${BASE}/schedule`),
     update: (params: Partial<Omit<ScheduleConfig, 'updated_at'>>) =>
       post<ScheduleConfig>(`${BASE}/schedule`, params),
+  },
+
+  migration: {
+    status: () => get<MigrationStatusResponse>(`${BASE}/migration/status`),
+    start: () => post<unknown>(`${BASE}/migration/start`),
   },
 }

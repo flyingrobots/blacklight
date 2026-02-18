@@ -75,24 +75,24 @@ onMounted(async () => {
   margin-bottom: 2rem;
 }
 .stat-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   padding: 1.25rem;
 }
 .stat-value {
-  font-size: 1.5rem;
+  font-size: var(--bl-text-xl);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--bl-accent);
 }
 .stat-label {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
+  color: var(--bl-text-2);
+  font-size: var(--bl-text-md);
   margin-top: 0.25rem;
 }
 .section { margin-bottom: 2rem; }
-.section h3 { margin-bottom: 1rem; color: var(--text-secondary); }
+.section h3 { margin-bottom: 1rem; color: var(--bl-text-2); }
 .session-list { display: flex; flex-direction: column; gap: 0.75rem; }
 .loading, .error { padding: 2rem; text-align: center; }
-.error { color: var(--danger); }
+.error { color: var(--bl-danger); }
 </style>

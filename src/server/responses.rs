@@ -77,6 +77,10 @@ pub struct SessionSummary {
     pub enrichment_summary: Option<String>,
     pub approval_status: Option<String>,
     pub tags: Vec<SessionTag>,
+    pub source_name: Option<String>,
+    pub source_kind: Option<String>,
+    pub app_version: Option<String>,
+    pub fingerprint: Option<String>,
 }
 
 /// Tag with confidence score from AI enrichment.
@@ -105,6 +109,10 @@ pub struct SessionDetail {
     pub enrichment_summary: Option<String>,
     pub approval_status: Option<String>,
     pub tags: Vec<SessionTag>,
+    pub source_name: Option<String>,
+    pub source_kind: Option<String>,
+    pub app_version: Option<String>,
+    pub fingerprint: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

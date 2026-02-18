@@ -33,10 +33,10 @@ async fn overview(
 async fn coverage(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let source_dir = state.source_dir.clone();
+    let source_dirs: Vec<_> = state.config.resolved_sources().into_iter().map(|(_, p, _, _)| p).collect();
     let result = state
         .db
-        .call(move |conn| analytics::get_coverage(conn, Some(&source_dir)))
+        .call(move |conn| analytics::get_coverage(conn, &source_dirs))
         .await?;
 
     Ok(Json(serde_json::to_value(result)?))

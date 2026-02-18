@@ -22,6 +22,10 @@ pub fn handle_assistant(
     let session_id = &envelope.session_id;
     let timestamp = &envelope.timestamp;
 
+    let mut fp_hasher = blake3::Hasher::new();
+    fp_hasher.update(b"assistant");
+    fp_hasher.update(timestamp.as_bytes());
+
     ops.message = Some(MessageRow {
         id: msg_id.clone(),
         session_id: session_id.clone(),
@@ -33,11 +37,15 @@ pub fn handle_assistant(
         cwd: envelope.cwd.clone(),
         git_branch: envelope.git_branch.clone(),
         duration_ms: None,
+        turn_index: None, // Set by router if needed, or left NULL
+        source_name: None, // Set by router
+        fingerprint: None, // Set at end
     });
 
     match &envelope.message.content {
         ContentValue::Text(text) => {
             let hash = content::hash_content(text);
+            fp_hasher.update(hash.as_bytes());
             ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "text".into()));
             ops.blob_refs.push((hash.clone(), msg_id.clone(), "response_text".into()));
             ops.fts_entries.push((hash.clone(), "text".into(), text.clone()));
@@ -56,6 +64,7 @@ pub fn handle_assistant(
             match block {
                 ContentBlock::Text { text } => {
                     let hash = content::hash_content(text);
+                    fp_hasher.update(hash.as_bytes());
                     ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "text".into()));
                     ops.blob_refs.push((hash.clone(), msg_id.clone(), "response_text".into()));
                     ops.fts_entries.push((hash.clone(), "text".into(), text.clone()));
@@ -73,6 +82,14 @@ pub fn handle_assistant(
                     let input_str = serde_json::to_string(input).unwrap_or_default();
                     let input_hash = content::hash_content(&input_str);
                     let input_len = input_str.len() as i64;
+                    
+                    // Tool call fingerprint
+                    let mut tc_fp = blake3::Hasher::new();
+                    tc_fp.update(name.as_bytes());
+                    tc_fp.update(input_hash.as_bytes());
+                    let tc_fingerprint = tc_fp.finalize().to_hex().to_string();
+                    fp_hasher.update(tc_fingerprint.as_bytes());
+
                     ops.blobs.push((input_hash.clone(), input_str, input_len, "tool_input".into()));
 
                     ops.content_blocks.push(ContentBlockRow {
@@ -92,12 +109,14 @@ pub fn handle_assistant(
                         tool_name: name.clone(),
                         input_hash: Some(input_hash),
                         timestamp: timestamp.clone(),
+                        fingerprint: Some(tc_fingerprint),
                     });
 
                     tracker.track_tool_use(id, name, input);
                 }
                 ContentBlock::Thinking { thinking } => {
                     let hash = content::hash_content(thinking);
+                    fp_hasher.update(hash.as_bytes());
                     ops.blobs.push((hash.clone(), thinking.clone(), thinking.len() as i64, "thinking".into()));
                     // No FTS for thinking blocks
                     ops.content_blocks.push(ContentBlockRow {
@@ -118,6 +137,10 @@ pub fn handle_assistant(
         }
     }
 
+    if let Some(msg) = &mut ops.message {
+        msg.fingerprint = Some(fp_hasher.finalize().to_hex().to_string());
+    }
+
     ops
 }
 
@@ -130,6 +153,10 @@ pub fn handle_user(
     let msg_id = &envelope.uuid;
     let session_id = &envelope.session_id;
 
+    let mut fp_hasher = blake3::Hasher::new();
+    fp_hasher.update(b"user");
+    fp_hasher.update(envelope.timestamp.as_bytes());
+
     ops.message = Some(MessageRow {
         id: msg_id.clone(),
         session_id: session_id.clone(),
@@ -141,11 +168,15 @@ pub fn handle_user(
         cwd: envelope.cwd.clone(),
         git_branch: envelope.git_branch.clone(),
         duration_ms: None,
+        turn_index: None,
+        source_name: None,
+        fingerprint: None,
     });
 
     match &envelope.message.content {
         ContentValue::Text(text) => {
             let hash = content::hash_content(text);
+            fp_hasher.update(hash.as_bytes());
             ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "user_text".into()));
             ops.blob_refs.push((hash.clone(), msg_id.clone(), "user_prompt".into()));
             ops.fts_entries.push((hash.clone(), "user_text".into(), text.clone()));
@@ -169,6 +200,10 @@ pub fn handle_user(
                         let content_str = serde_json::to_string(result_content).unwrap_or_default();
                         let hash = content::hash_content(&content_str);
                         let content_len = content_str.len() as i64;
+                        
+                        // Result fingerprint
+                        fp_hasher.update(hash.as_bytes());
+
                         ops.blobs.push((hash.clone(), content_str.clone(), content_len, "tool_output".into()));
                         ops.blob_refs.push((hash.clone(), msg_id.clone(), "tool_result".into()));
                         ops.fts_entries.push((hash.clone(), "tool_output".into(), content_str));
@@ -198,6 +233,7 @@ pub fn handle_user(
                     }
                     ContentBlock::Text { text } => {
                         let hash = content::hash_content(text);
+                        fp_hasher.update(hash.as_bytes());
                         ops.blobs.push((hash.clone(), text.clone(), text.len() as i64, "user_text".into()));
                         ops.fts_entries.push((hash.clone(), "user_text".into(), text.clone()));
                         ops.content_blocks.push(ContentBlockRow {
@@ -216,11 +252,19 @@ pub fn handle_user(
         }
     }
 
+    if let Some(msg) = &mut ops.message {
+        msg.fingerprint = Some(fp_hasher.finalize().to_hex().to_string());
+    }
+
     ops
 }
 
 /// Handle a system message. Returns LineOps.
 pub fn handle_system(envelope: &SystemEnvelope) -> LineOps {
+    let mut fp_hasher = blake3::Hasher::new();
+    fp_hasher.update(b"system");
+    fp_hasher.update(envelope.timestamp.as_bytes());
+
     let mut ops = LineOps {
         message: Some(MessageRow {
             id: envelope.uuid.clone(),
@@ -233,12 +277,16 @@ pub fn handle_system(envelope: &SystemEnvelope) -> LineOps {
             cwd: None,
             git_branch: None,
             duration_ms: envelope.duration_ms,
+            turn_index: None,
+            source_name: None,
+            fingerprint: None,
         }),
         ..Default::default()
     };
 
     if let Some(content) = &envelope.content {
         let hash = content::hash_content(content);
+        fp_hasher.update(hash.as_bytes());
         ops.blobs.push((hash.clone(), content.clone(), content.len() as i64, "system".into()));
         ops.fts_entries.push((hash.clone(), "system".into(), content.clone()));
         ops.content_blocks.push(ContentBlockRow {
@@ -252,19 +300,27 @@ pub fn handle_system(envelope: &SystemEnvelope) -> LineOps {
         });
     }
 
+    if let Some(msg) = &mut ops.message {
+        msg.fingerprint = Some(fp_hasher.finalize().to_hex().to_string());
+    }
+
     ops
 }
 
 /// Handle a summary message. Returns LineOps.
 /// session_id must be provided from the file context since SummaryEnvelope doesn't contain it.
 pub fn handle_summary(envelope: &SummaryEnvelope, session_id: &str) -> LineOps {
-    let mut ops = LineOps::default();
+    let mut fp_hasher = blake3::Hasher::new();
+    fp_hasher.update(b"summary");
+    fp_hasher.update(envelope.summary.as_bytes());
 
     let leaf_uuid = envelope
         .leaf_uuid
         .as_deref()
         .unwrap_or("unknown");
     let synthetic_id = format!("summary-{leaf_uuid}");
+
+    let mut ops = LineOps::default();
 
     ops.message = Some(MessageRow {
         id: synthetic_id.clone(),
@@ -277,6 +333,9 @@ pub fn handle_summary(envelope: &SummaryEnvelope, session_id: &str) -> LineOps {
         cwd: None,
         git_branch: None,
         duration_ms: None,
+        turn_index: None,
+        source_name: None,
+        fingerprint: None,
     });
 
     let hash = content::hash_content(&envelope.summary);
@@ -292,6 +351,10 @@ pub fn handle_summary(envelope: &SummaryEnvelope, session_id: &str) -> LineOps {
         tool_use_id: None,
         tool_input_hash: None,
     });
+
+    if let Some(msg) = &mut ops.message {
+        msg.fingerprint = Some(fp_hasher.finalize().to_hex().to_string());
+    }
 
     ops
 }

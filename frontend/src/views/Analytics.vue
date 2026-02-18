@@ -137,28 +137,28 @@ onMounted(async () => {
 <style scoped>
 .analytics-view h2 { margin-bottom: 1.5rem; }
 .section { margin-bottom: 2rem; }
-.section h3 { margin-bottom: 1rem; color: var(--text-secondary); }
+.section h3 { margin-bottom: 1rem; color: var(--bl-text-2); }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
 @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--bl-text-md);
 }
 .data-table th, .data-table td {
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--bl-border);
   text-align: left;
 }
-.data-table th { color: var(--text-secondary); font-weight: 500; }
+.data-table th { color: var(--bl-text-2); font-weight: 500; }
 .data-table .right { text-align: right; }
 .bar-chart { display: flex; flex-direction: column; gap: 0.5rem; }
-.bar-row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.8125rem; }
-.bar-label { width: 140px; flex-shrink: 0; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar-track { flex: 1; height: 20px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
-.bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s; }
-.bar-fill.outcome { background: var(--success); }
+.bar-row { display: flex; align-items: center; gap: 0.75rem; font-size: var(--bl-text-sm); }
+.bar-label { width: 140px; flex-shrink: 0; color: var(--bl-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { flex: 1; height: 20px; background: var(--bl-bg-3); border-radius: var(--bl-radius-sm); overflow: hidden; }
+.bar-fill { height: 100%; background: var(--bl-accent); border-radius: var(--bl-radius-sm); transition: width 0.3s; }
+.bar-fill.outcome { background: var(--bl-success); }
 .bar-value { width: 60px; text-align: right; flex-shrink: 0; }
 .loading, .error { padding: 2rem; text-align: center; }
-.error { color: var(--danger); }
+.error { color: var(--bl-danger); }
 </style>

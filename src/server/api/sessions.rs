@@ -96,36 +96,73 @@ async fn get_raw(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Look up the source file path from the DB
-    let source_dir = state.source_dir.clone();
-    let source_file = state
+    // 1. Must find a backup in CAS
+    let backup_info = state
         .db
         .call(move |conn| {
-            let path: Option<String> = conn
+            let row: Option<(String, String)> = conn
                 .query_row(
-                    "SELECT source_file FROM sessions WHERE id = ?1",
+                    "SELECT content_hash, source_name FROM session_backups WHERE session_id = ?1",
                     rusqlite::params![id],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .ok();
-            Ok(path)
+            Ok(row)
         })
         .await?;
 
-    let source_file = source_file.ok_or_else(|| AppError::not_found("session not found"))?;
-    let path = std::path::Path::new(&source_file);
+    let (hash, _source_name) = backup_info.ok_or_else(|| AppError::not_found("session not backed up in CAS"))?;
+    let backup_dir = state.config.resolved_backup_dir();
+    
+    match state.config.backup_mode {
+        crate::config::BackupMode::Simple => {
+            let path = backup_dir.join(&hash);
+            let content = tokio::fs::read_to_string(path).await
+                .map_err(|e| AppError::internal(format!("failed to read CAS backup: {e}")))?;
+            Ok((
+                [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
+                content,
+            ))
+        }
+        crate::config::BackupMode::GitCas => {
+            // Snappy materialized cache check
+            let materialized_dir = state.config.resolved_db_path().parent()
+                .ok_or_else(|| AppError::internal("no db parent"))?
+                .join("materialized");
+            if !materialized_dir.exists() {
+                std::fs::create_dir_all(&materialized_dir).map_err(|e| AppError::internal(format!("failed to create cache: {e}")))?;
+            }
+            
+            let cache_path = materialized_dir.join(&hash);
+            if cache_path.exists() {
+                let content = tokio::fs::read_to_string(cache_path).await
+                    .map_err(|e| AppError::internal(format!("failed to read materialized cache: {e}")))?;
+                return Ok((
+                    [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
+                    content,
+                ));
+            }
 
-    // Security: ensure the file is under the configured source directory
-    if !path.starts_with(&source_dir) {
-        return Err(AppError::bad_request("file outside source directory"));
+            // Not in cache, restore from git-cas
+            let output = tokio::process::Command::new("git")
+                .args(["cas", "restore", "--oid", &hash, "--out", cache_path.to_string_lossy().as_ref()])
+                .current_dir(&backup_dir)
+                .output()
+                .await
+                .map_err(|e| AppError::internal(format!("failed to run git cas restore: {e}")))?;
+
+            if !output.status.success() {
+                let err = String::from_utf8_lossy(&output.stderr);
+                return Err(AppError::internal(format!("git cas restore failed: {err}")));
+            }
+
+            let content = tokio::fs::read_to_string(cache_path).await
+                .map_err(|e| AppError::internal(format!("failed to read restored file: {e}")))?;
+            
+            Ok((
+                [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
+                content,
+            ))
+        }
     }
-
-    let content = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| AppError::not_found(format!("could not read source file: {e}")))?;
-
-    Ok((
-        [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
-        content,
-    ))
 }

@@ -4,7 +4,7 @@ use rusqlite::{params, Connection};
 use super::scanner::FileEntry;
 
 /// Status of a file relative to the last index run.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FileStatus {
     /// File has never been indexed.
     New,

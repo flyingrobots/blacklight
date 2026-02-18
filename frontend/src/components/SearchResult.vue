@@ -23,9 +23,9 @@ defineProps<{ hit: SearchHit }>()
 
 <style scoped>
 .search-result {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   padding: 1rem;
 }
 .sr-header {
@@ -33,25 +33,25 @@ defineProps<{ hit: SearchHit }>()
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
-  font-size: 0.8125rem;
+  font-size: var(--bl-text-sm);
 }
 .sr-kind {
-  background: var(--bg-tertiary);
+  background: var(--bl-bg-3);
   padding: 0.125rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  border-radius: var(--bl-radius-sm);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
 }
-.sr-session { font-size: 0.8125rem; }
-.sr-type { color: var(--text-secondary); font-size: 0.75rem; }
+.sr-session { font-size: var(--bl-text-sm); }
+.sr-type { color: var(--bl-text-2); font-size: var(--bl-text-xs); }
 .sr-snippet {
-  font-size: 0.875rem;
+  font-size: var(--bl-text-md);
   line-height: 1.5;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
 }
 .sr-snippet :deep(mark) {
   background: rgba(88, 166, 255, 0.25);
-  color: var(--accent);
+  color: var(--bl-accent);
   padding: 0.05rem 0.2rem;
   border-radius: 2px;
 }

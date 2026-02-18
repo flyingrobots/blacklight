@@ -14,12 +14,11 @@ use std::sync::Arc;
 
 use crate::config::BlacklightConfig;
 use crate::notifications;
-use state::{AppState, DbPool, EnricherState, IndexerState};
+use state::{AppState, DbPool, EnricherState, IndexerState, MigrationState};
 
 /// Start the web server on the given port.
 pub async fn start_server(
     db_path: &Path,
-    source_dir: &Path,
     port: u16,
     no_open: bool,
     config: &BlacklightConfig,
@@ -27,10 +26,10 @@ pub async fn start_server(
     let pool = DbPool::new(db_path, 4)?;
     let state = AppState {
         db: Arc::new(pool),
-        source_dir: source_dir.to_path_buf(),
         config: Arc::new(config.clone()),
         indexer: Arc::new(tokio::sync::Mutex::new(IndexerState::default())),
         enricher: Arc::new(tokio::sync::Mutex::new(EnricherState::default())),
+        migration: Arc::new(tokio::sync::Mutex::new(MigrationState::default())),
         scheduler: Arc::new(tokio::sync::Mutex::new(None)),
         notifications: notifications::create_channel(),
     };

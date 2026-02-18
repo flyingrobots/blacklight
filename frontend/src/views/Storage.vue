@@ -86,23 +86,23 @@ onMounted(async () => {
   margin-bottom: 2rem;
 }
 .stat-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   padding: 1.25rem;
 }
-.stat-value { font-size: 1.5rem; font-weight: 600; color: var(--accent); }
-.stat-label { color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem; }
+.stat-value { font-size: var(--bl-text-xl); font-weight: 600; color: var(--bl-accent); }
+.stat-label { color: var(--bl-text-2); font-size: var(--bl-text-md); margin-top: 0.25rem; }
 .section { margin-bottom: 2rem; }
-.section h3 { margin-bottom: 1rem; color: var(--text-secondary); }
-.data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.section h3 { margin-bottom: 1rem; color: var(--bl-text-2); }
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--bl-text-md); }
 .data-table th, .data-table td {
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--bl-border);
   text-align: left;
 }
-.data-table th { color: var(--text-secondary); font-weight: 500; }
+.data-table th { color: var(--bl-text-2); font-weight: 500; }
 .data-table .right { text-align: right; }
 .loading, .error { padding: 2rem; text-align: center; }
-.error { color: var(--danger); }
+.error { color: var(--bl-danger); }
 </style>

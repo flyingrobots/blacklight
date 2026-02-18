@@ -18,13 +18,13 @@ defineEmits<{ dismiss: [] }>()
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--bl-radius-md);
   border-left: 4px solid;
-  background: var(--bg-secondary, #1a1a2e);
-  color: var(--text, #e0e0e0);
-  font-size: 0.8125rem;
+  background: var(--bl-bg-2);
+  color: var(--bl-text);
+  font-size: var(--bl-text-sm);
   line-height: 1.4;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--bl-shadow-md);
   max-width: 380px;
   word-break: break-word;
 }
@@ -49,7 +49,7 @@ defineEmits<{ dismiss: [] }>()
   flex-shrink: 0;
   background: none;
   border: none;
-  color: var(--text-secondary, #888);
+  color: var(--bl-text-2);
   font-size: 1.125rem;
   cursor: pointer;
   padding: 0;
@@ -58,6 +58,6 @@ defineEmits<{ dismiss: [] }>()
 }
 
 .toast-dismiss:hover {
-  color: var(--text, #e0e0e0);
+  color: var(--bl-text);
 }
 </style>

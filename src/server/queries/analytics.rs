@@ -194,29 +194,28 @@ pub fn get_project_breakdown(conn: &Connection) -> Result<Vec<ProjectBreakdown>>
 
 pub fn get_coverage(
     conn: &Connection,
-    source_dir: Option<&std::path::Path>,
+    source_dirs: &[std::path::PathBuf],
 ) -> Result<IndexCoverage> {
-    // Source file stats — scan the filesystem if a source dir is provided
-    let (source_files, source_bytes) = if let Some(dir) = source_dir {
-        match crate::indexer::scanner::scan(dir) {
-            Ok(entries) => {
-                let count = entries.len() as i64;
-                let bytes: i64 = entries.iter().map(|e| e.size_bytes as i64).sum();
-                (count, bytes)
-            }
-            Err(_) => (0i64, 0i64),
+    // Source file stats — scan all filesystem sources
+    let mut source_files = 0i64;
+    let mut source_bytes = 0i64;
+
+    for dir in source_dirs {
+        if let Ok(entries) = crate::indexer::scanner::scan(dir) {
+            source_files += entries.len() as i64;
+            source_bytes += entries.iter().map(|e| e.size_bytes as i64).sum::<i64>();
         }
-    } else {
-        // Fall back to indexed_files count as estimate
-        let count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM indexed_files", [], |row| row.get(0))?;
-        let bytes: i64 = conn.query_row(
+    }
+
+    if source_dirs.is_empty() {
+        // Fall back to indexed_files count as estimate if no sources
+        source_files = conn.query_row("SELECT COUNT(*) FROM indexed_files", [], |row| row.get(0))?;
+        source_bytes = conn.query_row(
             "SELECT COALESCE(SUM(size_bytes), 0) FROM indexed_files",
             [],
             |row| row.get(0),
         )?;
-        (count, bytes)
-    };
+    }
 
     // Indexed file stats (from indexed_files table)
     let indexed_files: i64 =

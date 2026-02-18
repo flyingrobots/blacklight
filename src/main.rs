@@ -183,12 +183,6 @@ fn resolve_db_path(cli: &Cli, cfg: &BlacklightConfig) -> PathBuf {
         .unwrap_or_else(|| cfg.resolved_db_path())
 }
 
-fn resolve_claude_dir(cli: &Cli, cfg: &BlacklightConfig) -> PathBuf {
-    cli.claude_dir
-        .clone()
-        .unwrap_or_else(|| cfg.resolved_claude_dir())
-}
-
 fn run_index(
     cli: &Cli,
     cfg: &BlacklightConfig,
@@ -196,16 +190,40 @@ fn run_index(
     source: Option<PathBuf>,
     verbose: bool,
 ) {
-    let claude_dir = source.unwrap_or_else(|| resolve_claude_dir(cli, cfg));
+    let mut sources = cfg.resolved_sources();
+    
+    // Auto-discover extra sources
+    let extras = blacklight::indexer::scanner::discover_extra_sources();
+    for extra in extras {
+        // Only add if not already in configured sources
+        if !sources.iter().any(|(_, p, _, _)| p == &extra.1) {
+            sources.push((extra.0, extra.1, extra.2, None));
+        }
+    }
+    
+    // If --source is provided, it replaces all configured sources for this run
+    if let Some(s) = source {
+        sources = vec![("cli".to_string(), s, config::SourceKind::Claude, None)];
+    } else if let Some(c) = &cli.claude_dir {
+        // If --claude-dir is provided, override the path of the default 'claude' source
+        for (name, path, _, _) in &mut sources {
+            if name == "claude" {
+                *path = c.clone();
+            }
+        }
+    }
+
     let db_path = resolve_db_path(cli, cfg);
-    let extra_dirs = blacklight::indexer::scanner::discover_extra_sources();
+    let backup_dir = cfg.resolved_backup_dir();
+    let backup_mode = cfg.backup_mode;
     let skip_dirs = cfg.indexer.skip_dirs.clone();
     let verbose = verbose || cfg.indexer.verbose;
 
     match indexer::run_index(indexer::IndexConfig {
-        claude_dir,
-        extra_dirs,
+        sources,
         db_path,
+        backup_dir,
+        backup_mode,
         full,
         verbose,
         skip_dirs,
@@ -229,13 +247,12 @@ fn run_serve(
     no_open: bool,
 ) {
     let db_path = resolve_db_path(cli, cfg);
-    let claude_dir = resolve_claude_dir(cli, cfg);
     let port = port.unwrap_or(cfg.server.port);
     let no_open = no_open || cfg.server.no_open;
 
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async {
-        if let Err(e) = server::start_server(&db_path, &claude_dir, port, no_open, cfg).await {
+        if let Err(e) = server::start_server(&db_path, port, no_open, cfg).await {
             eprintln!("server error: {e:#}");
             std::process::exit(1);
         }

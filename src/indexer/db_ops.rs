@@ -14,6 +14,9 @@ pub struct MessageRow {
     pub cwd: Option<String>,
     pub git_branch: Option<String>,
     pub duration_ms: Option<u64>,
+    pub turn_index: Option<i32>,
+    pub source_name: Option<String>,
+    pub fingerprint: Option<String>,
 }
 
 /// Row data for a content_block insert.
@@ -37,6 +40,7 @@ pub struct ToolCallRow {
     pub tool_name: String,
     pub input_hash: Option<String>,
     pub timestamp: String,
+    pub fingerprint: Option<String>,
 }
 
 /// Row data for a file_reference insert.
@@ -99,8 +103,8 @@ pub fn flush_batch(conn: &Connection, batch: &[LineOps]) -> Result<FlushStats> {
     // 2. INSERT messages
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT OR IGNORE INTO messages (id, session_id, parent_id, type, timestamp, model, stop_reason, cwd, git_branch, duration_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT OR IGNORE INTO messages (id, session_id, parent_id, type, timestamp, model, stop_reason, cwd, git_branch, duration_ms, turn_index, source_name, fingerprint)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )?;
         for ops in batch {
             if let Some(msg) = &ops.message {
@@ -115,6 +119,9 @@ pub fn flush_batch(conn: &Connection, batch: &[LineOps]) -> Result<FlushStats> {
                     msg.cwd,
                     msg.git_branch,
                     msg.duration_ms,
+                    msg.turn_index,
+                    msg.source_name,
+                    msg.fingerprint,
                 ]).with_context(|| format!("failed to insert message {} (session={})", msg.id, msg.session_id))?;
                 stats.messages_inserted += 1;
             }
@@ -148,8 +155,8 @@ pub fn flush_batch(conn: &Connection, batch: &[LineOps]) -> Result<FlushStats> {
     // 4. INSERT OR IGNORE tool_calls
     {
         let mut stmt = tx.prepare_cached(
-            "INSERT OR IGNORE INTO tool_calls (id, message_id, session_id, tool_name, input_hash, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT OR IGNORE INTO tool_calls (id, message_id, session_id, tool_name, input_hash, timestamp, fingerprint)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?;
         for ops in batch {
             for tc in &ops.tool_calls {
@@ -160,6 +167,7 @@ pub fn flush_batch(conn: &Connection, batch: &[LineOps]) -> Result<FlushStats> {
                     tc.tool_name,
                     tc.input_hash,
                     tc.timestamp,
+                    tc.fingerprint,
                 ])?;
                 if changes > 0 {
                     stats.tool_calls_inserted += 1;
@@ -234,6 +242,48 @@ pub fn flush_batch(conn: &Connection, batch: &[LineOps]) -> Result<FlushStats> {
 
     tx.commit().context("failed to commit batch transaction")?;
     Ok(stats)
+}
+
+/// Calculate the session fingerprint (Merkle root of messages) and update the database.
+pub fn update_session_fingerprint(conn: &Connection, session_id: &str) -> Result<String> {
+    // 1. Get all message fingerprints for this session, sorted by timestamp/turn
+    let mut stmt = conn.prepare(
+        "SELECT fingerprint FROM messages WHERE session_id = ?1 AND fingerprint IS NOT NULL ORDER BY timestamp, turn_index",
+    )?;
+    let fingerprints: Vec<String> = stmt
+        .query_map(params![session_id], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+
+    // 2. Hash the concatenated fingerprints
+    let mut hasher = blake3::Hasher::new();
+    for fp in fingerprints {
+        hasher.update(fp.as_bytes());
+    }
+    let session_fp = hasher.finalize().to_hex().to_string();
+
+    // 3. Update the session record
+    conn.execute(
+        "UPDATE sessions SET fingerprint = ?2 WHERE id = ?1",
+        params![session_id, session_fp],
+    ).context("failed to update session fingerprint")?;
+
+    Ok(session_fp)
+}
+
+/// Record a file backup in the session_backups table.
+pub fn record_backup(
+    conn: &Connection,
+    session_id: &str,
+    original_path: &str,
+    content_hash: &str,
+    file_size: u64,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO session_backups (session_id, original_path, content_hash, backed_up_at, file_size)
+         VALUES (?1, ?2, ?3, datetime('now'), ?4)",
+        params![session_id, original_path, content_hash, file_size],
+    ).context("failed to record backup")?;
+    Ok(())
 }
 
 #[cfg(test)]

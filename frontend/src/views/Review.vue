@@ -153,7 +153,7 @@ onMounted(load)
   margin-bottom: 1.5rem;
 }
 .review-header h1 {
-  font-size: 1.5rem;
+  font-size: var(--bl-text-xl);
   font-weight: 600;
 }
 .review-actions {
@@ -162,14 +162,14 @@ onMounted(load)
   gap: 0.75rem;
 }
 .pending-count {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-md);
+  color: var(--bl-text-2);
 }
 
 .review-loading,
 .review-empty {
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   padding: 3rem 0;
   font-size: 0.9375rem;
 }
@@ -181,9 +181,9 @@ onMounted(load)
 }
 
 .review-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   padding: 1rem;
 }
 .review-card-header {
@@ -200,15 +200,15 @@ onMounted(load)
 }
 .session-link {
   font-weight: 600;
-  font-size: 1rem;
-  color: var(--accent);
+  font-size: var(--bl-text-base);
+  color: var(--bl-accent);
 }
 .session-link:hover {
   text-decoration: underline;
 }
 .review-project {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
 }
 
 .review-card-actions {
@@ -218,8 +218,8 @@ onMounted(load)
 }
 
 .review-summary {
-  font-size: 0.875rem;
-  color: var(--text);
+  font-size: var(--bl-text-md);
+  color: var(--bl-text);
   margin-bottom: 0.5rem;
   line-height: 1.4;
 }
@@ -235,10 +235,10 @@ onMounted(load)
   align-items: center;
   gap: 0.25rem;
   padding: 0.2rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  background: var(--bg-tertiary);
-  color: var(--text);
+  border-radius: var(--bl-radius-xl);
+  font-size: var(--bl-text-xs);
+  background: var(--bl-bg-3);
+  color: var(--bl-text);
 }
 .tag-low {
   border: 1px solid #d97706;
@@ -246,14 +246,14 @@ onMounted(load)
 }
 .tag-conf {
   font-size: 0.6875rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
 }
 
 .review-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
 }
 .review-prompt {
   max-width: 70%;
@@ -271,16 +271,16 @@ onMounted(load)
   padding: 1rem 0;
 }
 .page-info {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-sm);
+  color: var(--bl-text-2);
 }
 
 /* Buttons */
 .btn {
   padding: 0.3rem 0.65rem;
   border: none;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  border-radius: var(--bl-radius-md);
+  font-size: var(--bl-text-xs);
   font-weight: 500;
   cursor: pointer;
 }
@@ -288,12 +288,12 @@ onMounted(load)
   opacity: 0.5;
   cursor: not-allowed;
 }
-.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary { background: var(--bl-accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
-.btn-secondary { background: var(--bg-tertiary); color: var(--text); }
+.btn-secondary { background: var(--bl-bg-3); color: var(--bl-text); }
 .btn-secondary:hover:not(:disabled) { opacity: 0.85; }
-.btn-approve { background: var(--success, #22c55e); color: #fff; }
+.btn-approve { background: var(--bl-success); color: #fff; }
 .btn-approve:hover { opacity: 0.9; }
-.btn-reject { background: var(--danger, #ef4444); color: #fff; }
+.btn-reject { background: var(--bl-danger); color: #fff; }
 .btn-reject:hover { opacity: 0.9; }
 </style>

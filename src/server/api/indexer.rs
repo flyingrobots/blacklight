@@ -63,20 +63,30 @@ async fn start(
     let cancel_flag = guard.cancel_flag.clone();
     let pause_flag = guard.pause_flag.clone();
     let indexer_state = state.indexer.clone();
-    let source_dir = state.source_dir.clone();
     let db_path = state.db.db_path().to_path_buf();
+    let backup_dir = state.config.resolved_backup_dir();
+    let backup_mode = state.config.backup_mode;
     let full = params.full;
     let notify_tx = state.notifications.clone();
     let skip_dirs = state.config.indexer.skip_dirs.clone();
+    let mut sources = state.config.resolved_sources();
+
+    // Auto-discover extra sources
+    let extras = crate::indexer::scanner::discover_extra_sources();
+    for extra in extras {
+        if !sources.iter().any(|(_, p, _, _)| p == &extra.1) {
+            sources.push((extra.0, extra.1, extra.2, None));
+        }
+    }
 
     drop(guard); // Release lock before spawning
 
     tokio::task::spawn_blocking(move || {
-        let extra_dirs = crate::indexer::scanner::discover_extra_sources();
         let config = IndexConfig {
-            claude_dir: source_dir,
-            extra_dirs,
+            sources,
             db_path,
+            backup_dir,
+            backup_mode,
             full,
             verbose: false,
             skip_dirs,

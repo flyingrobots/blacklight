@@ -64,7 +64,8 @@ pub fn list_sessions(
                 s.created_at, s.modified_at, s.git_branch,
                 s.claude_version, s.is_sidechain,
                 o.outcome, o.brief_summary,
-                e.title, e.summary, e.approval_status
+                e.title, e.summary, e.approval_status,
+                s.source_name, s.source_kind, s.app_version, s.fingerprint
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
          LEFT JOIN session_enrichments e ON e.session_id = s.id
@@ -103,6 +104,10 @@ pub fn list_sessions(
                     row.get::<_, Option<String>>(13)?,
                     row.get::<_, Option<String>>(14)?,
                     row.get::<_, Option<String>>(15)?,
+                    row.get::<_, Option<String>>(16)?,
+                    row.get::<_, Option<String>>(17)?,
+                    row.get::<_, Option<String>>(18)?,
+                    row.get::<_, Option<String>>(19)?,
                 ))
             },
         )?
@@ -111,7 +116,8 @@ pub fn list_sessions(
     let mut items = Vec::with_capacity(rows.len());
     for (id, project_path, project_slug, first_prompt, summary, message_count,
          created_at, modified_at, git_branch, claude_version, is_sidechain,
-         outcome, brief_summary, enrichment_title, enrichment_summary, approval_status) in rows
+         outcome, brief_summary, enrichment_title, enrichment_summary, approval_status,
+         source_name, source_kind, app_version, fingerprint) in rows
     {
         let tags = tag_stmt
             .query_map(params![id], |row| {
@@ -127,6 +133,7 @@ pub fn list_sessions(
             created_at, modified_at, git_branch, claude_version, is_sidechain,
             outcome, brief_summary, enrichment_title, enrichment_summary,
             approval_status, tags,
+            source_name, source_kind, app_version, fingerprint,
         });
     }
 
@@ -156,7 +163,8 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                 s.claude_version, s.is_sidechain,
                 o.underlying_goal, o.outcome, o.helpfulness, o.session_type,
                 o.primary_success, o.friction_detail, o.brief_summary,
-                e.title, e.summary, e.approval_status
+                e.title, e.summary, e.approval_status,
+                s.source_name, s.source_kind, s.app_version, s.fingerprint
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
          LEFT JOIN session_enrichments e ON e.session_id = s.id
@@ -198,6 +206,10 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                     enrichment_summary: row.get(19)?,
                     approval_status: row.get(20)?,
                     tags: Vec::new(), // filled below
+                    source_name: row.get(21)?,
+                    source_kind: row.get(22)?,
+                    app_version: row.get(23)?,
+                    fingerprint: row.get(24)?,
                 },
                 row.get::<_, String>(0)?, // id again for tag lookup
             ))

@@ -24,6 +24,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(api::enrichment::routes())
         .merge(api::review::routes())
         .merge(api::schedule::routes())
+        .merge(api::migration::routes())
         .merge(api::ws::routes());
 
     Router::new()

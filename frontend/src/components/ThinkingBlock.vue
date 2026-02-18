@@ -18,9 +18,9 @@ const expanded = ref(false)
 
 <style scoped>
 .thinking-block {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-md);
   overflow: hidden;
 }
 .thinking-toggle {
@@ -29,25 +29,25 @@ const expanded = ref(false)
   gap: 0.5rem;
   width: 100%;
   padding: 0.375rem 0.75rem;
-  background: var(--bg-tertiary);
+  background: var(--bl-bg-3);
   border: none;
-  color: var(--purple);
+  color: var(--bl-purple);
   cursor: pointer;
-  font-size: 0.8125rem;
+  font-size: var(--bl-text-sm);
   font-weight: 600;
   text-align: left;
 }
-.thinking-toggle:hover { background: var(--border); }
-.icon { font-size: 0.625rem; }
-.length { color: var(--text-secondary); font-weight: 400; }
+.thinking-toggle:hover { background: var(--bl-border); }
+.icon { font-size: var(--bl-text-2xs); }
+.length { color: var(--bl-text-2); font-weight: 400; }
 .thinking-content {
   padding: 0.75rem;
-  font-size: 0.8125rem;
+  font-size: var(--bl-text-sm);
   max-height: 500px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   background: none;
   border: none;
   border-radius: 0;

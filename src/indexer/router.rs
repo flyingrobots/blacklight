@@ -162,6 +162,13 @@ pub fn process_jsonl(
         stats.tool_calls_inserted += flush_stats.tool_calls_inserted;
     }
 
+    // Update fingerprints for all seen sessions
+    for sid in seen_sessions {
+        if let Err(e) = super::db_ops::update_session_fingerprint(conn, &sid) {
+            tracing::warn!("failed to update fingerprint for session {sid}: {e}");
+        }
+    }
+
     let final_offset = reader.byte_offset();
 
     if verbose {

@@ -27,6 +27,10 @@ export interface SessionSummary {
   enrichment_title: string | null
   enrichment_summary: string | null
   tags: SessionTag[]
+  source_name: string | null
+  source_kind: string | null
+  app_version: string | null
+  fingerprint: string | null
 }
 
 export interface SessionOutcome {
@@ -55,6 +59,10 @@ export interface SessionDetail {
   enrichment_title: string | null
   enrichment_summary: string | null
   tags: SessionTag[]
+  source_name: string | null
+  source_kind: string | null
+  app_version: string | null
+  fingerprint: string | null
 }
 
 export interface ContentBlockDetail {
@@ -286,4 +294,20 @@ export interface ScheduleConfig {
   run_enrichment: boolean
   enrichment_concurrency: number
   updated_at: string
+}
+
+// Migration types
+
+export type MigrationStatus = 'idle' | 'running' | 'completed' | 'failed'
+
+export interface MigrationProgress {
+  total_sessions: number
+  backed_up: number
+  fingerprints_updated: number
+}
+
+export interface MigrationStatusResponse {
+  status: MigrationStatus
+  progress: MigrationProgress
+  error_message: string | null
 }

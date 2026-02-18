@@ -2,36 +2,53 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Discover additional Claude data directories beyond ~/.claude/.
-/// Currently finds Claude Desktop local-agent-mode session .claude/ dirs.
-pub fn discover_extra_sources() -> Vec<PathBuf> {
+/// Discover additional Claude and Gemini data directories.
+pub fn discover_extra_sources() -> Vec<(String, PathBuf, crate::config::SourceKind)> {
     let mut extras = Vec::new();
 
-    // Claude Desktop: ~/Library/Application Support/Claude/local-agent-mode-sessions/
     if let Some(home) = dirs::home_dir() {
-        let agent_sessions = home
-            .join("Library/Application Support/Claude/local-agent-mode-sessions");
-        if agent_sessions.exists() {
-            // Each session has: {org}/{conv}/local_{id}/.claude/
-            // Walk two levels deep to find .claude directories
-            if let Ok(entries) = find_nested_claude_dirs(&agent_sessions) {
-                tracing::info!(
-                    "discovered {} agent-mode .claude/ dirs in {}",
-                    entries.len(),
-                    agent_sessions.display()
-                );
-                extras.extend(entries);
+        // 1. Claude Desktop: ~/Library/Application Support/Claude/
+        let claude_app_support = home.join("Library/Application Support/Claude");
+        if claude_app_support.exists() {
+            // 1a. local-agent-mode-sessions
+            let agent_sessions = claude_app_support.join("local-agent-mode-sessions");
+            if agent_sessions.exists() {
+                if let Ok(entries) = find_nested_claude_dirs(&agent_sessions) {
+                    for path in entries {
+                        extras.push(("claude-desktop-agent".to_string(), path, crate::config::SourceKind::Claude));
+                    }
+                }
             }
+
+            // 1b. claude-code-sessions
+            let code_sessions = claude_app_support.join("claude-code-sessions");
+            if code_sessions.exists() {
+                // These are often nested deeply, but they contain JSON files we can index.
+                // We'll add the root and let the scanner find them.
+                extras.push(("claude-desktop-code".to_string(), code_sessions, crate::config::SourceKind::Claude));
+            }
+        }
+
+        // 2. Gemini: ~/.gemini/
+        let gemini_dir = home.join(".gemini");
+        if gemini_dir.exists() {
+            extras.push(("gemini".to_string(), gemini_dir, crate::config::SourceKind::Gemini));
+        }
+
+        // 3. Codex: ~/.codex/
+        let codex_dir = home.join(".codex");
+        if codex_dir.exists() {
+            extras.push(("codex".to_string(), codex_dir, crate::config::SourceKind::Codex));
         }
     }
 
     extras
 }
 
-/// Recursively find `.claude` directories under a root (up to 4 levels deep).
+/// Recursively find `.claude` directories under a root (up to 6 levels deep).
 fn find_nested_claude_dirs(root: &Path) -> Result<Vec<PathBuf>> {
     let mut results = Vec::new();
-    find_claude_dirs_recursive(root, 0, 4, &mut results);
+    find_claude_dirs_recursive(root, 0, 6, &mut results);
     Ok(results)
 }
 
@@ -57,7 +74,7 @@ fn find_claude_dirs_recursive(dir: &Path, depth: u32, max_depth: u32, results: &
     }
 }
 
-/// Classification of files found under ~/.claude/
+/// Classification of files found under ~/.claude/ or ~/.gemini/
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FileKind {
     SessionIndex,   // projects/**/sessions-index.json
@@ -69,6 +86,9 @@ pub enum FileKind {
     HistoryJsonl,   // history.jsonl
     PlanMarkdown,   // plans/**/*.md
     ToolResultTxt,  // projects/**/tool-results/toolu_*.txt
+    GeminiSessionJson, // tmp/**/chats/session-*.json
+    ClaudeDesktopSessionIndex, // claude-code-sessions/**/local_*.json
+    CodexSessionJsonl, // sessions/**/rollout-*.jsonl
 }
 
 impl std::fmt::Display for FileKind {
@@ -83,6 +103,9 @@ impl std::fmt::Display for FileKind {
             FileKind::HistoryJsonl => write!(f, "HistoryJsonl"),
             FileKind::PlanMarkdown => write!(f, "PlanMarkdown"),
             FileKind::ToolResultTxt => write!(f, "ToolResultTxt"),
+            FileKind::GeminiSessionJson => write!(f, "GeminiSessionJson"),
+            FileKind::ClaudeDesktopSessionIndex => write!(f, "ClaudeDesktopSessionIndex"),
+            FileKind::CodexSessionJsonl => write!(f, "CodexSessionJsonl"),
         }
     }
 }
@@ -268,6 +291,21 @@ fn classify(root: &Path, path: &Path, file_name: &str) -> Option<FileKind> {
             return Some(FileKind::PlanMarkdown);
         }
         return None;
+    }
+
+    // Gemini: tmp/**/chats/session-*.json
+    if (rel_str.contains("/chats/") || rel_str.contains("\\chats\\")) && file_name.ends_with(".json") && file_name.starts_with("session-") {
+        return Some(FileKind::GeminiSessionJson);
+    }
+
+    // Claude Desktop Code Sessions: claude-code-sessions/**/local_*.json
+    if (rel_str.contains("/claude-code-sessions/") || rel_str.contains("\\claude-code-sessions\\")) && file_name.ends_with(".json") && file_name.starts_with("local_") {
+        return Some(FileKind::ClaudeDesktopSessionIndex);
+    }
+
+    // Codex: sessions/**/rollout-*.jsonl
+    if (rel_str.contains("/sessions/") || rel_str.contains("\\sessions\\")) && file_name.ends_with(".jsonl") && file_name.starts_with("rollout-") {
+        return Some(FileKind::CodexSessionJsonl);
     }
 
     None

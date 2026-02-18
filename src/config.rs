@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Top-level configuration loaded from `blacklight.toml`.
@@ -8,8 +8,12 @@ use std::path::{Path, PathBuf};
 pub struct BlacklightConfig {
     /// Path to the SQLite database (supports `~` expansion).
     pub db: String,
-    /// Path to the Claude data directory (supports `~` expansion).
-    pub claude_dir: String,
+    /// Path to the backup directory (supports `~` expansion).
+    pub backup_dir: String,
+    /// Backup mode (git-cas or simple).
+    pub backup_mode: BackupMode,
+    /// Data sources to index.
+    pub sources: Vec<SourceConfig>,
     /// Default log level when `RUST_LOG` is not set.
     pub log_level: String,
 
@@ -20,11 +24,42 @@ pub struct BlacklightConfig {
     pub sqlite: SqliteConfig,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BackupMode {
+    #[default]
+    GitCas,
+    Simple,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SourceConfig {
+    pub name: String,
+    pub path: String,
+    pub kind: SourceKind,
+    pub cas_prefix: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceKind {
+    Claude,
+    Gemini,
+    Codex,
+}
+
 impl Default for BlacklightConfig {
     fn default() -> Self {
         Self {
             db: "~/.blacklight/blacklight.db".to_string(),
-            claude_dir: "~/.claude/".to_string(),
+            backup_dir: "~/.blacklight/backups/".to_string(),
+            backup_mode: BackupMode::default(),
+            sources: vec![SourceConfig {
+                name: "claude".to_string(),
+                path: "~/.claude/".to_string(),
+                kind: SourceKind::Claude,
+                cas_prefix: Some("claude".to_string()),
+            }],
             log_level: "info".to_string(),
             server: ServerConfig::default(),
             indexer: IndexerConfig::default(),
@@ -41,9 +76,18 @@ impl BlacklightConfig {
         expand_tilde(&self.db)
     }
 
-    /// Resolve the Claude data directory, expanding `~`.
-    pub fn resolved_claude_dir(&self) -> PathBuf {
-        expand_tilde(&self.claude_dir)
+    /// Resolve the backup directory path, expanding `~`.
+    pub fn resolved_backup_dir(&self) -> PathBuf {
+        expand_tilde(&self.backup_dir)
+    }
+
+    /// Resolve all source paths, expanding `~`.
+    /// Returns (name, path, kind, cas_prefix)
+    pub fn resolved_sources(&self) -> Vec<(String, PathBuf, SourceKind, Option<String>)> {
+        self.sources
+            .iter()
+            .map(|s| (s.name.clone(), expand_tilde(&s.path), s.kind, s.cas_prefix.clone()))
+            .collect()
     }
 
     /// Resolve the log level string.

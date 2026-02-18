@@ -1,6 +1,6 @@
 {
   "name": "blacklight",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "setup": "touch .env; grep -q ANTHROPIC_API_KEY .env || echo 'ANTHROPIC_API_KEY=' >> .env; grep -q GOOGLE_API_KEY .env || echo 'GOOGLE_API_KEY=' >> .env; grep -q OLLAMA_MODEL .env || echo 'OLLAMA_MODEL=' >> .env; echo 'Setup complete. Edit .env if you need to add keys.'",

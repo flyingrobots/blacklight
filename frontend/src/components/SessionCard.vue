@@ -1,7 +1,10 @@
 <template>
   <router-link :to="`/sessions/${session.id}`" class="session-card">
     <div class="card-header">
-      <span class="project">{{ session.project_slug }}</span>
+      <div class="header-left">
+        <span class="project">{{ session.project_slug }}</span>
+        <span v-if="session.source_name" class="source-badge">{{ session.source_kind || 'source' }}: {{ session.source_name }}</span>
+      </div>
       <span class="date">{{ new Date(session.modified_at).toLocaleDateString() }}</span>
     </div>
     <div class="prompt" :class="{ faded: !displayText.primary }">{{ displayText.text }}</div>
@@ -35,50 +38,64 @@ const displayText = computed(() => {
 <style scoped>
 .session-card {
   display: block;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
   padding: 1rem;
   transition: border-color 0.15s;
   text-decoration: none;
-  color: var(--text);
+  color: var(--bl-text);
 }
-.session-card:hover { border-color: var(--accent); text-decoration: none; }
+.session-card:hover { border-color: var(--bl-accent); text-decoration: none; }
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
 }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.source-badge {
+  font-family: var(--bl-font-mono);
+  font-size: 0.625rem;
+  color: var(--bl-text-2);
+  opacity: 0.7;
+  border: 1px solid var(--bl-border);
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--bl-radius-sm);
+}
 .project {
-  font-size: 0.75rem;
-  color: var(--accent);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-accent);
   background: #1a2a3a;
   padding: 0.125rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--bl-radius-sm);
 }
-.date { font-size: 0.75rem; color: var(--text-secondary); }
-.prompt { font-size: 0.875rem; line-height: 1.4; margin-bottom: 0.5rem; }
-.prompt.faded { color: var(--text-secondary); font-style: italic; }
+.date { font-size: var(--bl-text-xs); color: var(--bl-text-2); }
+.prompt { font-size: var(--bl-text-md); line-height: 1.4; margin-bottom: 0.5rem; }
+.prompt.faded { color: var(--bl-text-2); font-style: italic; }
 .enrichment-summary {
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
   line-height: 1.3;
   margin-bottom: 0.5rem;
 }
 .card-footer { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
 .meta {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
 }
-.meta.branch { color: var(--purple); }
-.meta.outcome { color: var(--success); }
+.meta.branch { color: var(--bl-purple); }
+.meta.outcome { color: var(--bl-success); }
 .tag-chip {
   font-size: 0.675rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
+  background: var(--bl-bg-3);
+  border: 1px solid var(--bl-border);
   border-radius: 10px;
   padding: 0.0625rem 0.4375rem;
-  color: var(--text-secondary);
+  color: var(--bl-text-2);
 }
 </style>

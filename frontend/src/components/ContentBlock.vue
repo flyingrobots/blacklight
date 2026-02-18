@@ -57,13 +57,13 @@ function truncate(text: string, maxLen: number): string {
   background: none;
   border: none;
   padding: 0;
-  font-size: 0.875rem;
+  font-size: var(--bl-text-md);
   line-height: 1.5;
 }
 .tool-use, .tool-result {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: var(--bl-bg-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-md);
   overflow: hidden;
 }
 .tool-header {
@@ -71,16 +71,16 @@ function truncate(text: string, maxLen: number): string {
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 0.75rem;
-  background: var(--bg-tertiary);
-  font-size: 0.8125rem;
+  background: var(--bl-bg-3);
+  font-size: var(--bl-text-sm);
 }
 .tool-icon { opacity: 0.6; }
-.tool-name { font-weight: 600; color: var(--accent); }
-.tool-label { font-weight: 600; color: var(--success); }
-.tool-id { color: var(--text-secondary); font-size: 0.75rem; }
+.tool-name { font-weight: 600; color: var(--bl-accent); }
+.tool-label { font-weight: 600; color: var(--bl-success); }
+.tool-id { color: var(--bl-text-2); font-size: var(--bl-text-xs); }
 .tool-content {
   padding: 0.5rem 0.75rem;
-  font-size: 0.8125rem;
+  font-size: var(--bl-text-sm);
   max-height: 400px;
   overflow-y: auto;
   background: none;
