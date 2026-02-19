@@ -142,6 +142,8 @@ pub fn ensure_session(
     cwd: Option<&str>,
     git_branch: Option<&str>,
     timestamp: &str,
+    source_name: Option<&str>,
+    source_kind: Option<&str>,
 ) -> Result<()> {
     let exists: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?1)",
@@ -158,9 +160,9 @@ pub fn ensure_session(
 
         conn.execute(
             "INSERT INTO sessions
-             (id, project_path, project_slug, created_at, modified_at, source_file)
-             VALUES (?1, ?2, ?3, ?4, ?4, ?5)",
-            params![session_id, project_path, project_slug, timestamp, source_file],
+             (id, project_path, project_slug, created_at, modified_at, source_file, source_name, source_kind)
+             VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7)",
+            params![session_id, project_path, project_slug, timestamp, source_file, source_name, source_kind],
         )?;
 
         if git_branch.is_some() {

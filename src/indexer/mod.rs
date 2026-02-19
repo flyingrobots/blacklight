@@ -258,13 +258,13 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         p.files_done = 0;
     });
 
-    for (source_name, _, _, entry, _) in &session_indexes {
+    for (source_name, kind, _, entry, _) in &session_indexes {
         match sessions::parse_session_index(&conn, &entry.path) {
             Ok(count) => {
                 report.sessions_parsed += count;
                 conn.execute(
-                    "UPDATE sessions SET source_name = ?1, source_kind = 'claude' WHERE source_file = ?2",
-                    rusqlite::params![source_name, entry.path.to_string_lossy()],
+                    "UPDATE sessions SET source_name = ?1, source_kind = ?2 WHERE source_file = ?3",
+                    rusqlite::params![source_name, kind.to_string().to_lowercase(), entry.path.to_string_lossy()],
                 ).ok();
             },
             Err(e) => {
@@ -280,13 +280,13 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         .filter(|(_, _, _, e, _)| e.kind == FileKind::ClaudeDesktopSessionIndex)
         .collect();
     
-    for (source_name, _, _, entry, _) in desktop_indexes {
+    for (source_name, kind, _, entry, _) in desktop_indexes {
         match sessions::parse_desktop_session_index(&conn, &entry.path) {
             Ok(count) => {
                 report.sessions_parsed += count;
                 conn.execute(
-                    "UPDATE sessions SET source_name = ?1, source_kind = 'claude' WHERE source_file = ?2",
-                    rusqlite::params![source_name, entry.path.to_string_lossy()],
+                    "UPDATE sessions SET source_name = ?1, source_kind = ?2 WHERE source_file = ?3",
+                    rusqlite::params![source_name, kind.to_string().to_lowercase(), entry.path.to_string_lossy()],
                 ).ok();
             },
             Err(e) => {
@@ -309,13 +309,20 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         p.files_total = session_jsonls.len() + gemini_sessions.len() + codex_sessions.len();
         p.files_done = 0;
     });
-    for (source_name, _, cas_prefix, entry, status) in &session_jsonls {
+    for (source_name, kind, cas_prefix, entry, status) in &session_jsonls {
         let start_offset = match status {
             FileStatus::Modified { last_byte_offset } => *last_byte_offset,
             _ => 0,
         };
 
-        match router::process_jsonl(&conn, &entry.path, start_offset, config.verbose) {
+        match router::process_jsonl(
+            &conn,
+            &entry.path,
+            start_offset,
+            config.verbose,
+            Some(source_name),
+            Some(&kind.to_string().to_lowercase()),
+        ) {
             Ok((stats, final_offset)) => {
                 report.messages_processed += stats.messages_processed;
                 report.messages_skipped += stats.messages_skipped;

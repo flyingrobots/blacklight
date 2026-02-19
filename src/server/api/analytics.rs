@@ -12,11 +12,26 @@ pub fn routes() -> Router<AppState> {
         .route("/analytics/overview", get(overview))
         .route("/analytics/coverage", get(coverage))
         .route("/analytics/daily", get(daily))
+        .route("/analytics/daily-projects", get(daily_projects))
         .route("/analytics/models", get(models))
         .route("/analytics/tools", get(tools))
         .route("/analytics/projects", get(projects))
         .route("/analytics/llms", get(llms))
         .route("/analytics/outcomes", get(outcomes))
+}
+
+async fn daily_projects(
+    State(state): State<AppState>,
+    Query(params): Query<DateRangeParams>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let result: Vec<crate::server::responses::DailyProjectStats> = state
+        .db
+        .call(move |conn| {
+            analytics::get_daily_project_breakdown(conn, params.from.as_deref(), params.to.as_deref())
+        })
+        .await?;
+
+    Ok(Json(serde_json::to_value(result)?))
 }
 
 async fn overview(

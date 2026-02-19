@@ -48,6 +48,16 @@ pub enum SourceKind {
     Codex,
 }
 
+impl std::fmt::Display for SourceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Claude => write!(f, "claude"),
+            Self::Gemini => write!(f, "gemini"),
+            Self::Codex => write!(f, "codex"),
+        }
+    }
+}
+
 impl Default for BlacklightConfig {
     fn default() -> Self {
         Self {

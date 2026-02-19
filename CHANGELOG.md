@@ -5,20 +5,18 @@ All notable changes to this project will be documented in this file.
 ## [0.3.0] - 2026-02-18
 
 ### Added
+- **Interactive Activity Heatmap Tooltips:** Hovering over heatmap cells now displays a detailed breakdown of session counts per project for that day.
+- **LLM Source Metadata:** The indexer now records the specific source LLM (Claude, Gemini, Codex) for every session based on the configuration TOML.
+- **Zero-Value Filtering:** Dashboard charts now automatically hide categories with zero activity, providing a cleaner view of active projects and models.
 - **D3 Dashboard Visualizations:** Replaced static stats with interactive D3.js charts, including a GitHub-style activity heatmap and horizontal bar charts for Project/LLM breakdowns.
 - **Dynamic Time Windowing:** Added a global time slider (7d, 30d, 90d, 1y, All) that re-aggregates all dashboard analytics in real-time.
-- **LLM Usage Breakdown:** New analytics for Sessions, Messages, and Tool usage partitioned by LLM source (Claude, Gemini, Codex).
-- **TUI-Style Navigation:** Implemented `j/k` (Vim-style) keyboard navigation in the session list.
-- **Centered Scrolling:** Navigation uses GSAP `ScrollToPlugin` to keep the selected item vertically centered in the viewport.
-- **Vim-style Search:** Press `/` anywhere to instantly focus the search bar.
-- **Quartz Light Theme:** A high-contrast light mode for better legibility in bright environments.
-- **Terminal Aesthetic:** Introduced a "Mono" design system using monospace fonts, sharp borders, and high-contrast indicators (`>`) for a tactile TUI feel.
 
 ### Changed
+- **Dashboard Layout:** Reordered the home screen to prioritize "Recent Sessions" at the top, followed by interactive activity and analytics sections.
+- **Default Time Window:** The dashboard now defaults to the "Last 7 Days" for a more focused view of recent work.
+- **Heatmap Responsive Range:** The activity heatmap now respects the global time slider window (defaulting to 6 months for 'All Time').
+- **Heatmap Styling:** Improved heatmap legibility and transitioned all chart elements to use theme tokens.
 - **Backend Stability:** Switched server binding to `127.0.0.1` and added startup delays to frontend polling to eliminate connection noise during development.
-- **Improved Contrast:** Adjusted background blending in dark themes (Slate, Indigo, Orchid) to eliminate "pitch black" backgrounds and improve text legibility.
-- **Layout Refinement:** Moved navigation tabs above the wordmark and tightened the header layout for better focal hierarchy.
-- **Developer Experience:** Added a root-level `npm run dev` script using `concurrently` to start both the Rust backend and Vite dev server.
 
 ### Fixed
 - **Theme Compositor:** Fixed a build-breaking missing function in the theme engine.

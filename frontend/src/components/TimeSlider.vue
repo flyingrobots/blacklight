@@ -37,7 +37,7 @@ const options: TimeOption[] = [
   { label: 'All Time', shortLabel: 'All', days: null },
 ]
 
-const selectedIndex = ref(4) // Default to All Time
+const selectedIndex = ref(0) // Default to Last 7 Days
 
 const activeLabel = computed(() => options[Number(selectedIndex.value)].label)
 

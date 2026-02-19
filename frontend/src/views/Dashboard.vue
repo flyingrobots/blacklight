@@ -3,45 +3,7 @@
     <div v-if="loading && !overview" class="loading">Loading dashboard...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <template v-else>
-      <!-- Top Row: Overview Heatmap -->
-      <section class="section activity-section">
-        <div class="section-header">
-          <h3>Daily Activity</h3>
-          <span class="nav-hint">Sessions per day</span>
-        </div>
-        <ActivityHeatmap :data="dailyStats" />
-      </section>
-
-      <!-- Middle: Time Window Controller -->
-      <section class="section controls-section">
-        <TimeSlider @change="onTimeWindowChange" />
-      </section>
-
-      <!-- Grid: Analytics Breakdown -->
-      <div class="analytics-grid">
-        <DashboardBarChart
-          title="Sessions per Project"
-          :data="projectChartData"
-          color="var(--bl-accent)"
-        />
-        <DashboardBarChart
-          title="Sessions per LLM"
-          :data="llmSessionData"
-          color="var(--bl-success)"
-        />
-        <DashboardBarChart
-          title="Messages per LLM"
-          :data="llmMessageData"
-          color="var(--bl-purple)"
-        />
-        <DashboardBarChart
-          title="Tools per LLM"
-          :data="llmToolData"
-          color="var(--bl-warning)"
-        />
-      </div>
-
-      <!-- Bottom: Recent Sessions -->
+      <!-- Top: Recent Sessions -->
       <section class="section recent-section" v-if="recentSessions.length">
         <div class="section-header">
           <h3>Recent Sessions</h3>
@@ -55,6 +17,48 @@
           />
         </div>
       </section>
+
+      <!-- Middle Row: Overview Heatmap -->
+      <section class="section activity-section">
+        <div class="section-header">
+          <h3>Daily Activity</h3>
+          <span class="nav-hint">Sessions per day</span>
+        </div>
+        <ActivityHeatmap :data="dailyStats" :project-data="dailyProjects" />
+      </section>
+
+      <!-- Middle: Time Window Controller -->
+      <section class="section controls-section">
+        <TimeSlider @change="onTimeWindowChange" />
+      </section>
+
+      <!-- Grid: Analytics Breakdown -->
+      <div class="analytics-grid">
+        <DashboardBarChart
+          v-if="projectChartData.length"
+          title="Sessions per Project"
+          :data="projectChartData"
+          color="var(--bl-accent)"
+        />
+        <DashboardBarChart
+          v-if="llmSessionData.length"
+          title="Sessions per LLM"
+          :data="llmSessionData"
+          color="var(--bl-success)"
+        />
+        <DashboardBarChart
+          v-if="llmMessageData.length"
+          title="Messages per LLM"
+          :data="llmMessageData"
+          color="var(--bl-purple)"
+        />
+        <DashboardBarChart
+          v-if="llmToolData.length"
+          title="Tools per LLM"
+          :data="llmToolData"
+          color="var(--bl-warning)"
+        />
+      </div>
     </template>
   </div>
 </template>
@@ -62,7 +66,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { api } from '@/api/client'
-import type { AnalyticsOverview, SessionSummary, DailyStats, ProjectBreakdown, LlmBreakdown } from '@/types'
+import type { AnalyticsOverview, SessionSummary, DailyStats, ProjectBreakdown, LlmBreakdown, DailyProjectStats } from '@/types'
 import SessionCard from '@/components/SessionCard.vue'
 import ActivityHeatmap from '@/components/ActivityHeatmap.vue'
 import DashboardBarChart from '@/components/DashboardBarChart.vue'
@@ -75,30 +79,47 @@ const recentSessions = ref<SessionSummary[]>([])
 const projects = ref<ProjectBreakdown[]>([])
 const llmStats = ref<LlmBreakdown[]>([])
 const dailyStats = ref<DailyStats[]>([])
+const dailyProjects = ref<DailyProjectStats[]>([])
 
 const projectChartData = computed(() => 
-  projects.value.map(p => ({ label: p.project_slug, value: p.session_count }))
+  projects.value
+    .filter(p => p.session_count > 0)
+    .map(p => ({ label: p.project_slug, value: p.session_count }))
 )
 
 const llmSessionData = computed(() => 
-  llmStats.value.map(l => ({ label: l.source_kind, value: l.session_count }))
+  llmStats.value
+    .filter(l => l.session_count > 0)
+    .map(l => ({ label: l.source_kind, value: l.session_count }))
 )
 
 const llmMessageData = computed(() => 
-  llmStats.value.map(l => ({ label: l.source_kind, value: l.message_count }))
+  llmStats.value
+    .filter(l => l.message_count > 0)
+    .map(l => ({ label: l.source_kind, value: l.message_count }))
 )
 
 const llmToolData = computed(() => 
-  llmStats.value.map(l => ({ label: l.source_kind, value: l.tool_call_count }))
+  llmStats.value
+    .filter(l => l.tool_call_count > 0)
+    .map(l => ({ label: l.source_kind, value: l.tool_call_count }))
 )
 
-async function fetchHeatmap() {
-  // Always fetch last 6 months for the heatmap
-  const sixMonthsAgo = new Date()
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-  const from = sixMonthsAgo.toISOString().split('T')[0]
-  const ds = await api.analytics.daily({ from })
+async function fetchHeatmap(from?: string) {
+  let effectiveFrom = from
+  if (!effectiveFrom) {
+    // Default to last 6 months if 'All Time' is selected
+    const sixMonthsAgo = new Date()
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+    effectiveFrom = sixMonthsAgo.toISOString().split('T')[0]
+  }
+  
+  const [ds, dp] = await Promise.all([
+    api.analytics.daily({ from: effectiveFrom }),
+    api.analytics.dailyProjects({ from: effectiveFrom })
+  ])
   dailyStats.value = ds
+  dailyProjects.value = dp
 }
 
 async function fetchData(from?: string) {
@@ -114,6 +135,9 @@ async function fetchData(from?: string) {
     projects.value = proj
     llmStats.value = ls
     recentSessions.value = sessions.items
+    
+    // Also update heatmap
+    await fetchHeatmap(from)
   } catch (e: any) {
     error.value = e.message
   } finally {
@@ -132,8 +156,7 @@ function onTimeWindowChange(option: TimeOption) {
 }
 
 onMounted(() => {
-  fetchHeatmap()
-  fetchData()
+  // fetchData is called by TimeSlider's initial selection (7d)
 })
 </script>
 

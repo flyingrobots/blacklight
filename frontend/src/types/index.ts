@@ -129,6 +129,12 @@ export interface DailyStats {
   tool_call_count: number | null
 }
 
+export interface DailyProjectStats {
+  date: string
+  project_slug: string
+  session_count: number
+}
+
 export interface ModelUsage {
   model: string
   input_tokens: number | null

@@ -205,6 +205,14 @@ pub struct DailyStats {
     pub tool_call_count: Option<i64>,
 }
 
+/// Project breakdown for a specific day.
+#[derive(Debug, Serialize)]
+pub struct DailyProjectStats {
+    pub date: String,
+    pub project_slug: String,
+    pub session_count: i64,
+}
+
 /// Model usage breakdown.
 #[derive(Debug, Serialize)]
 pub struct ModelUsage {

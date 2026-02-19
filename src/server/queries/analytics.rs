@@ -2,8 +2,8 @@ use anyhow::Result;
 use rusqlite::{params, Connection};
 
 use crate::server::responses::{
-    AnalyticsOverview, CoverageByKind, DailyStats, IndexCoverage, LlmBreakdown, ModelUsage,
-    OutcomeStats, ProjectBreakdown, ToolFrequency,
+    AnalyticsOverview, CoverageByKind, DailyProjectStats, DailyStats, IndexCoverage, LlmBreakdown,
+    ModelUsage, OutcomeStats, ProjectBreakdown, ToolFrequency,
 };
 
 pub fn get_overview(conn: &Connection, db_path: &str) -> Result<AnalyticsOverview> {
@@ -309,6 +309,51 @@ pub fn get_llm_breakdown(
                 session_count: row.get(1)?,
                 message_count: row.get(2)?,
                 tool_call_count: row.get(3)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    Ok(items)
+}
+
+pub fn get_daily_project_breakdown(
+    conn: &Connection,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Vec<DailyProjectStats>> {
+    let mut where_clauses = Vec::new();
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(f) = from {
+        where_clauses.push(format!("created_at >= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(f.to_string()));
+    }
+    if let Some(t) = to {
+        where_clauses.push(format!("created_at <= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(t.to_string()));
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let sql = format!(
+        "SELECT date(created_at) as date, project_slug, COUNT(*) as cnt
+         FROM sessions
+         {where_sql}
+         GROUP BY date, project_slug
+         ORDER BY date ASC, cnt DESC"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let items = stmt
+        .query_map(rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())), |row| {
+            Ok(DailyProjectStats {
+                date: row.get(0)?,
+                project_slug: row.get(1)?,
+                session_count: row.get(2)?,
             })
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
