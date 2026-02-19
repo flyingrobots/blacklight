@@ -263,6 +263,8 @@ export interface IndexerStatusResponse {
   progress: IndexProgress
   latest_report: IndexReport | null
   error_message: string | null
+  required_version: number
+  outdated_count: number
 }
 
 // Enricher types
@@ -283,6 +285,8 @@ export interface EnricherStatusResponse {
   sessions_failed: number
   latest_report: EnrichReport | null
   error_message: string | null
+  required_version: number
+  outdated_count: number
 }
 
 // Review types
@@ -307,6 +311,8 @@ export interface ScheduleConfig {
   run_enrichment: boolean
   enrichment_concurrency: number
   updated_at: string
+  last_run_at: string | null
+  next_run_at: string | null
 }
 
 // Migration types
@@ -323,4 +329,5 @@ export interface MigrationStatusResponse {
   status: MigrationStatus
   progress: MigrationProgress
   error_message: string | null
+  pending_count: number
 }

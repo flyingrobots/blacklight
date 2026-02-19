@@ -20,7 +20,7 @@ async fn get_config(
         .db
         .call(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT enabled, interval_minutes, run_enrichment, enrichment_concurrency, updated_at
+                "SELECT enabled, interval_minutes, run_enrichment, enrichment_concurrency, updated_at, last_run_at, next_run_at
                  FROM schedule_config WHERE id = 1",
             )?;
             let config = stmt.query_row([], |row| {
@@ -30,6 +30,8 @@ async fn get_config(
                     run_enrichment: row.get::<_, i32>(2)? != 0,
                     enrichment_concurrency: row.get(3)?,
                     updated_at: row.get(4)?,
+                    last_run_at: row.get(5)?,
+                    next_run_at: row.get(6)?,
                 })
             })?;
             Ok(config)
@@ -87,7 +89,7 @@ async fn update_config(
 
             // Return the updated config
             let mut stmt = conn.prepare(
-                "SELECT enabled, interval_minutes, run_enrichment, enrichment_concurrency, updated_at
+                "SELECT enabled, interval_minutes, run_enrichment, enrichment_concurrency, updated_at, last_run_at, next_run_at
                  FROM schedule_config WHERE id = 1",
             )?;
             let config = stmt.query_row([], |row| {
@@ -97,6 +99,8 @@ async fn update_config(
                     run_enrichment: row.get::<_, i32>(2)? != 0,
                     enrichment_concurrency: row.get(3)?,
                     updated_at: row.get(4)?,
+                    last_run_at: row.get(5)?,
+                    next_run_at: row.get(6)?,
                 })
             })?;
             Ok(config)

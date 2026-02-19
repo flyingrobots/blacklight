@@ -495,6 +495,11 @@ fn store_enrichment_internal(
         tag_stmt.execute(params![session_id, tag.tag, tag.confidence])?;
     }
 
+    conn.execute(
+        "UPDATE sessions SET enrichment_version = ?2 WHERE id = ?1",
+        params![session_id, crate::ENRICH_VERSION],
+    )?;
+
     Ok(())
 }
 

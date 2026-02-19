@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## [0.3.0] - 2026-02-18
 
 ### Added
+- **Maintenance Badges:** The IndexerHUD now shows visual badges ('!') when re-indexing, enrichment, or migration is required due to logic or schema updates.
+- **Scheduler Tracking:** The Schedule tab now displays 'Last Run' and 'Next Run' timestamps for background maintenance tasks.
+- **Session Versioning:** Implemented internal version tracking for indexing and enrichment to detect outdated history.
 - **Interactive Activity Heatmap Tooltips:** Hovering over heatmap cells now displays a detailed breakdown of session counts per project for that day.
 - **LLM Source Metadata:** The indexer now records the specific source LLM (Claude, Gemini, Codex) for every session based on the configuration TOML.
 - **Zero-Value Filtering:** Dashboard charts now automatically hide categories with zero activity, providing a cleaner view of active projects and models.
@@ -12,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - **Dynamic Time Windowing:** Added a global time slider (7d, 30d, 90d, 1y, All) that re-aggregates all dashboard analytics in real-time.
 
 ### Changed
+- **Dashboard Performance:** Split dashboard data loading into essential (sessions) and non-essential (analytics) requests. Recent sessions now appear immediately while analytics are processed in the background.
 - **Dashboard Layout:** Reordered the home screen to prioritize "Recent Sessions" at the top, followed by interactive activity and analytics sections.
 - **Default Time Window:** The dashboard now defaults to the "Last 7 Days" for a more focused view of recent work.
 - **Heatmap Responsive Range:** The activity heatmap now respects the global time slider window (defaulting to 6 months for 'All Time').

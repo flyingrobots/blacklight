@@ -45,8 +45,8 @@ pub fn parse_desktop_session_index(conn: &Connection, path: &Path) -> Result<usi
 
     conn.execute(
         "INSERT OR REPLACE INTO sessions
-         (id, project_path, project_slug, first_prompt, summary, created_at, modified_at, source_file, source_kind)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'claude')",
+         (id, project_path, project_slug, first_prompt, summary, created_at, modified_at, source_file, source_kind, index_version)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'claude', ?9)",
         params![
             index.session_id,
             project_path,
@@ -56,6 +56,7 @@ pub fn parse_desktop_session_index(conn: &Connection, path: &Path) -> Result<usi
             created,
             modified,
             source_file,
+            crate::INDEX_VERSION,
         ],
     ).context("failed to insert desktop session index")?;
 
@@ -79,8 +80,8 @@ pub fn parse_session_index(conn: &Connection, path: &Path) -> Result<usize> {
         let mut stmt = tx.prepare_cached(
             "INSERT OR REPLACE INTO sessions
              (id, project_path, project_slug, first_prompt, summary, message_count,
-              created_at, modified_at, git_branch, claude_version, is_sidechain, source_file)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+              created_at, modified_at, git_branch, claude_version, is_sidechain, source_file, index_version)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         )?;
 
         for entry in &index.entries {
@@ -118,6 +119,7 @@ pub fn parse_session_index(conn: &Connection, path: &Path) -> Result<usize> {
                 Option::<String>::None, // claude_version not in index
                 entry.is_sidechain.unwrap_or(false) as i32,
                 source_file,
+                crate::INDEX_VERSION,
             ])?;
             count += 1;
         }
@@ -160,9 +162,9 @@ pub fn ensure_session(
 
         conn.execute(
             "INSERT INTO sessions
-             (id, project_path, project_slug, created_at, modified_at, source_file, source_name, source_kind)
-             VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7)",
-            params![session_id, project_path, project_slug, timestamp, source_file, source_name, source_kind],
+             (id, project_path, project_slug, created_at, modified_at, source_file, source_name, source_kind, index_version)
+             VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7, ?8)",
+            params![session_id, project_path, project_slug, timestamp, source_file, source_name, source_kind, crate::INDEX_VERSION],
         )?;
 
         if git_branch.is_some() {
@@ -237,6 +239,8 @@ mod tests {
             Some("/home/user/projects/project"),
             Some("feature-branch"),
             "2024-01-01T00:00:00Z",
+            None,
+            None,
         )
         .unwrap();
 
@@ -269,6 +273,8 @@ mod tests {
             None,
             None,
             "2024-02-01T00:00:00Z",
+            None,
+            None,
         )
         .unwrap();
 

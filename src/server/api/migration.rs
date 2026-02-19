@@ -15,10 +15,22 @@ pub fn routes() -> Router<AppState> {
 async fn status(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
     let guard = state.migration.lock().await;
     let progress = guard.progress.lock().unwrap().clone();
+
+    let pending_count = state.db.call(|conn| {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sessions WHERE fingerprint IS NULL 
+             OR id NOT IN (SELECT session_id FROM session_backups)",
+            [],
+            |row| row.get(0)
+        )?;
+        Ok(count)
+    }).await?;
+
     Ok(Json(serde_json::json!({
         "status": guard.status,
         "progress": progress,
         "error_message": guard.error_message,
+        "pending_count": pending_count,
     })))
 }
 

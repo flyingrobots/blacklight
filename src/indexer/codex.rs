@@ -64,8 +64,8 @@ pub fn process_codex_session(
                     .to_string();
 
                 conn.execute(
-                    "INSERT OR IGNORE INTO sessions (id, project_path, project_slug, created_at, modified_at, source_file, source_name, source_kind, app_version)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'codex', ?8)",
+                    "INSERT OR IGNORE INTO sessions (id, project_path, project_slug, created_at, modified_at, source_file, source_name, source_kind, app_version, index_version)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'codex', ?8, ?9)",
                     rusqlite::params![
                         session_id,
                         project_path,
@@ -75,6 +75,7 @@ pub fn process_codex_session(
                         path.to_string_lossy(),
                         source_name,
                         meta.cli_version,
+                        crate::INDEX_VERSION,
                     ],
                 )?;
             }

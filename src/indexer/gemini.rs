@@ -64,8 +64,8 @@ pub fn process_gemini_session(
 
     // 1. Ensure session exists in DB
     conn.execute(
-        "INSERT OR IGNORE INTO sessions (id, project_path, project_slug, created_at, modified_at, source_file, source_name, source_kind)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'gemini')",
+        "INSERT OR IGNORE INTO sessions (id, project_path, project_slug, created_at, modified_at, source_file, source_name, source_kind, index_version)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'gemini', ?8)",
         rusqlite::params![
             session.session_id,
             session.project_hash,
@@ -74,6 +74,7 @@ pub fn process_gemini_session(
             session.last_updated,
             path.to_string_lossy(),
             source_name,
+            crate::INDEX_VERSION,
         ],
     )?;
 

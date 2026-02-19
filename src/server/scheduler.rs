@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use rusqlite::params;
 
 use crate::enrich::EnrichConfig;
 use crate::indexer::IndexConfig;
@@ -54,6 +55,18 @@ async fn scheduler_loop(state: AppState, cancel_flag: Arc<AtomicBool>) {
         }
 
         // Run indexing if not already running
+        let now = chrono::Utc::now().to_rfc3339();
+        let next = chrono::Utc::now() + chrono::Duration::minutes(config.interval_minutes as i64);
+        let next_str = next.to_rfc3339();
+
+        let _ = state.db.call(move |conn| {
+            conn.execute(
+                "UPDATE schedule_config SET last_run_at = ?1, next_run_at = ?2 WHERE id = 1",
+                params![now, next_str],
+            )?;
+            Ok(())
+        }).await;
+
         run_scheduled_index(&state).await;
 
         // Run enrichment if enabled and not already running

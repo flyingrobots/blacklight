@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::enrich::EnrichReport;
 use crate::indexer::{IndexProgress, IndexReport};
-use crate::server::state::{EnricherStatus, IndexerStatus};
+use crate::server::state::{EnricherStatus, IndexerStatus, MigrationStatus, MigrationProgress};
 
 /// Indexer status response.
 #[derive(Debug, Serialize)]
@@ -11,6 +11,8 @@ pub struct IndexerStatusResponse {
     pub progress: IndexProgress,
     pub latest_report: Option<IndexReport>,
     pub error_message: Option<String>,
+    pub required_version: i32,
+    pub outdated_count: i64,
 }
 
 /// Enricher status response.
@@ -22,6 +24,8 @@ pub struct EnricherStatusResponse {
     pub sessions_failed: usize,
     pub latest_report: Option<EnrichReport>,
     pub error_message: Option<String>,
+    pub required_version: i32,
+    pub outdated_count: i64,
 }
 
 /// Review queue item for pending enrichments.
@@ -46,6 +50,8 @@ pub struct ScheduleConfigResponse {
     pub run_enrichment: bool,
     pub enrichment_concurrency: i32,
     pub updated_at: String,
+    pub last_run_at: Option<String>,
+    pub next_run_at: Option<String>,
 }
 
 /// Paginated response wrapper.
@@ -336,4 +342,13 @@ pub struct FileProvenance {
     pub session_count: i64,
     pub operations: Vec<String>,
     pub last_session_id: Option<String>,
+}
+
+/// Migration status response.
+#[derive(Debug, Serialize)]
+pub struct MigrationStatusResponse {
+    pub status: MigrationStatus,
+    pub progress: MigrationProgress,
+    pub error_message: Option<String>,
+    pub pending_count: i64,
 }

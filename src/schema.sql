@@ -54,7 +54,7 @@ CREATE TABLE tool_calls (
     timestamp TEXT NOT NULL
 );
 
--- Content-addressable blob store
+-- Content addressable blob store
 CREATE TABLE content_store (
     hash TEXT PRIMARY KEY,
     content TEXT NOT NULL,

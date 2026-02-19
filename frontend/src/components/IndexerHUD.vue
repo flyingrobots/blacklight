@@ -12,6 +12,7 @@
       <span v-if="anyActive || indexerStatus.status === 'paused'" class="hud-pill-text">
         {{ pillLabel }}
       </span>
+      <span v-if="!anyActive && hasPendingActions" class="hud-badge">!</span>
     </div>
 
     <!-- Expanded card -->
@@ -23,7 +24,10 @@
             :key="tab"
             :class="['hud-tab', { active: activeTab === tab }]"
             @click.stop="activeTab = tab"
-          >{{ tab }}</button>
+          >
+            {{ tab }}
+            <span v-if="tabHasBadge(tab)" class="tab-badge">!</span>
+          </button>
         </div>
         <button class="hud-close" @click.stop="collapse">&times;</button>
       </div>
@@ -32,6 +36,9 @@
       <div v-if="activeTab === 'Indexer'">
         <div class="hud-status-row">
           <span :class="['status-badge', `status-${indexerStatus.status}`]">{{ indexerStatus.status }}</span>
+          <span v-if="indexerStatus.outdated_count > 0" class="outdated-hint">
+            {{ indexerStatus.outdated_count }} need update
+          </span>
         </div>
 
         <div class="hud-summary-row">
@@ -86,6 +93,9 @@
       <div v-if="activeTab === 'Enrichment'">
         <div class="hud-status-row">
           <span :class="['status-badge', `status-${enricherStatus.status}`]">{{ enricherStatus.status }}</span>
+          <span v-if="enricherStatus.outdated_count > 0" class="outdated-hint">
+            {{ enricherStatus.outdated_count }} need enrich
+          </span>
         </div>
 
         <div class="hud-summary-row">
@@ -133,6 +143,9 @@
       <div v-if="activeTab === 'Migration'">
         <div class="hud-status-row">
           <span :class="['status-badge', `status-${migrationStatus.status}`]">{{ migrationStatus.status }}</span>
+          <span v-if="migrationStatus.pending_count > 0" class="outdated-hint">
+            {{ migrationStatus.pending_count }} need migration
+          </span>
         </div>
 
         <div class="hud-summary-row">
@@ -202,6 +215,18 @@
             <span>Concurrency</span>
             <input type="number" v-model.number="scheduleForm.enrichment_concurrency" min="1" max="20" class="schedule-input" />
           </label>
+
+          <div class="schedule-timing" v-if="scheduleConfig">
+            <div class="timing-row">
+              <span class="timing-label">Last Run:</span>
+              <span class="timing-value">{{ scheduleConfig.last_run_at ? formatTime(scheduleConfig.last_run_at) : 'Never' }}</span>
+            </div>
+            <div class="timing-row" v-if="scheduleConfig.enabled">
+              <span class="timing-label">Next Run:</span>
+              <span class="timing-value">{{ scheduleConfig.next_run_at ? formatTime(scheduleConfig.next_run_at) : '...' }}</span>
+            </div>
+          </div>
+
           <div class="hud-controls">
             <button class="btn btn-primary" @click="saveSchedule">Save</button>
           </div>
@@ -240,6 +265,8 @@ const indexerStatus = ref<IndexerStatusResponse>({
   progress: { phase: '', files_total: 0, files_done: 0, messages_processed: 0, blobs_inserted: 0 },
   latest_report: null,
   error_message: null,
+  required_version: 0,
+  outdated_count: 0,
 })
 
 const enricherStatus = ref<EnricherStatusResponse>({
@@ -249,14 +276,18 @@ const enricherStatus = ref<EnricherStatusResponse>({
   sessions_failed: 0,
   latest_report: null,
   error_message: null,
+  required_version: 0,
+  outdated_count: 0,
 })
 
 const migrationStatus = ref<import('@/types').MigrationStatusResponse>({
   status: 'idle',
   progress: { total_sessions: 0, backed_up: 0, fingerprints_updated: 0 },
   error_message: null,
+  pending_count: 0,
 })
 
+const scheduleConfig = ref<ScheduleConfig | null>(null)
 const scheduleForm = ref({
   enabled: true,
   interval_minutes: 60,
@@ -274,6 +305,19 @@ const indexerIsActive = computed(() => indexerStatus.value.status === 'running')
 const enricherIsActive = computed(() => enricherStatus.value.status === 'running')
 const migrationIsActive = computed(() => migrationStatus.value.status === 'running')
 const anyActive = computed(() => indexerIsActive.value || enricherIsActive.value || migrationIsActive.value)
+
+const hasPendingActions = computed(() => 
+  indexerStatus.value.outdated_count > 0 || 
+  enricherStatus.value.outdated_count > 0 || 
+  migrationStatus.value.pending_count > 0
+)
+
+function tabHasBadge(tab: Tab): boolean {
+  if (tab === 'Indexer') return indexerStatus.value.outdated_count > 0
+  if (tab === 'Enrichment') return enricherStatus.value.outdated_count > 0
+  if (tab === 'Migration') return migrationStatus.value.pending_count > 0
+  return false
+}
 
 const activeStatus = computed(() => {
   if (migrationIsActive.value) return migrationStatus.value.status
@@ -315,6 +359,11 @@ function timeAgo(date: Date): string {
   return `${days}d ago`
 }
 
+function formatTime(iso: string): string {
+  const date = new Date(iso)
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
 const pillLabel = computed(() => {
   if (migrationIsActive.value) {
     return `Migrating ${migrationPct.value.toFixed(0)}%`
@@ -343,12 +392,6 @@ async function fetchCoverageAndOverview() {
       indexerLastUpdated.value = timeAgo(new Date(overviewData.value.last_session))
     }
   } catch { /* ignore */ }
-  // Use enrichment count from a lightweight query
-  try {
-    const pending = await api.enrichment.pendingCount()
-    // pending.count is pending_review; enrichedCount is sessions_with_outcomes from coverage
-    // We'll refine enricherLastUpdated from the enricher status
-  } catch { /* ignore */ }
 }
 
 async function pollStatus() {
@@ -376,6 +419,10 @@ async function pollStatus() {
   if (expanded.value && activeTab.value === 'Logs') {
     try { indexerLogs.value = await api.indexer.logs() } catch { /* ignore */ }
     try { enricherLogs.value = await api.enrichment.logs() } catch { /* ignore */ }
+  }
+  // Periodically refresh schedule info
+  if (expanded.value && activeTab.value === 'Schedule') {
+    loadSchedule()
   }
 }
 
@@ -503,6 +550,7 @@ watch(activeTab, async (tab) => {
 async function loadSchedule() {
   try {
     const config = await api.schedule.get()
+    scheduleConfig.value = config
     scheduleForm.value = {
       enabled: config.enabled,
       interval_minutes: config.interval_minutes,
@@ -517,6 +565,7 @@ async function saveSchedule() {
     await api.schedule.update(scheduleForm.value)
     scheduleSaved.value = true
     setTimeout(() => { scheduleSaved.value = false }, 2000)
+    loadSchedule()
   } catch (e: any) {
     enricherStatus.value.error_message = e.message
   }
@@ -561,6 +610,7 @@ onUnmounted(() => {
   box-shadow: var(--bl-shadow-sm);
   transition: border-color 0.2s;
   white-space: nowrap;
+  position: relative;
 }
 .hud-collapsed:hover .hud-pill {
   border-color: var(--bl-accent);
@@ -583,6 +633,24 @@ onUnmounted(() => {
   color: var(--bl-text-2);
   font-size: var(--bl-text-xs);
   font-weight: 500;
+}
+
+/* Badge */
+.hud-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--bl-accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bl-bg);
 }
 
 /* Spinner */
@@ -643,6 +711,7 @@ onUnmounted(() => {
   border-radius: var(--bl-radius-sm);
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
+  position: relative;
 }
 .hud-tab:hover {
   color: var(--bl-text);
@@ -652,10 +721,27 @@ onUnmounted(() => {
   color: var(--bl-accent);
   background: var(--bl-bg-3);
 }
+.tab-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  background: var(--bl-accent);
+  border-radius: 50%;
+}
 
 /* Status row */
 .hud-status-row {
   margin-bottom: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.outdated-hint {
+  font-size: 10px;
+  color: var(--bl-accent);
+  font-family: var(--bl-font-mono);
 }
 
 /* Summary row */
@@ -859,6 +945,21 @@ onUnmounted(() => {
   padding: 0.25rem 0.4rem;
   text-align: right;
 }
+.schedule-timing {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: var(--bl-bg-3);
+  border-radius: var(--bl-radius-md);
+}
+.timing-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-family: var(--bl-font-mono);
+}
+.timing-label { color: var(--bl-text-3); }
+.timing-value { color: var(--bl-text-2); }
+
 .schedule-saved {
   font-size: var(--bl-text-xs);
   color: var(--bl-success);

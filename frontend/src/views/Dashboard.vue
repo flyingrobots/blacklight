@@ -122,19 +122,31 @@ async function fetchHeatmap(from?: string) {
   dailyProjects.value = dp
 }
 
-async function fetchData(from?: string) {
-  loading.value = true
+async function fetchEssentialData() {
   try {
-    const [ov, proj, ls, sessions] = await Promise.all([
+    const [ov, sessions] = await Promise.all([
       api.analytics.overview(),
-      api.analytics.projects({ from }),
-      api.analytics.llms({ from }),
       api.sessions.list({ limit: 5 }),
     ])
     overview.value = ov
+    recentSessions.value = sessions.items
+  } catch (e: any) {
+    error.value = e.message
+  }
+}
+
+async function fetchData(from?: string) {
+  loading.value = true
+  // Fetch essential data first (or in parallel but let it show as soon as it arrives)
+  fetchEssentialData()
+
+  try {
+    const [proj, ls] = await Promise.all([
+      api.analytics.projects({ from }),
+      api.analytics.llms({ from }),
+    ])
     projects.value = proj
     llmStats.value = ls
-    recentSessions.value = sessions.items
     
     // Also update heatmap
     await fetchHeatmap(from)
@@ -157,14 +169,6 @@ function onTimeWindowChange(option: TimeOption) {
 
 onMounted(() => {
   // TimeSlider will trigger fetchData(7d) on mount due to immediate: true watch
-  // but we add a safety check here to ensure we don't stay in loading state
-  setTimeout(() => {
-    if (loading.value && !overview.value) {
-      const d = new Date()
-      d.setDate(d.getDate() - 7)
-      fetchData(d.toISOString().split('T')[0])
-    }
-  }, 1000)
 })
 </script>
 

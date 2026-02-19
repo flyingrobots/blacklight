@@ -4,6 +4,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use std::sync::atomic::Ordering;
+use rusqlite::params;
 
 use crate::indexer::IndexConfig;
 use crate::notifications::{self, NotificationLevel};
@@ -32,11 +33,23 @@ async fn logs(
 async fn status(State(state): State<AppState>) -> Result<Json<IndexerStatusResponse>, AppError> {
     let guard = state.indexer.lock().await;
     let progress = guard.progress.lock().unwrap().clone();
+    
+    let outdated_count = state.db.call(|conn| {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sessions WHERE index_version < ?1",
+            params![crate::INDEX_VERSION],
+            |row| row.get(0)
+        )?;
+        Ok(count)
+    }).await?;
+
     let resp = IndexerStatusResponse {
         status: guard.status.clone(),
         progress,
         latest_report: guard.latest_report.clone(),
         error_message: guard.error_message.clone(),
+        required_version: crate::INDEX_VERSION,
+        outdated_count,
     };
     Ok(Json(resp))
 }
