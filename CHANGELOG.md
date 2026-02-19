@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.
 - **Materialized Cache:** Snappy raw file viewing in the UI even when restoring from Git CAS.
 
 ### Fixed
+- **Analytics SQL Queries:** Fixed "Wrong number of parameters" error when loading the dashboard by ensuring SQL placeholders consistently match the passed arguments regardless of filter state.
 - **FTS5 Search Sanitization:** Fixed "no such column" error when searching for terms containing colons or hyphens (like CAS prefixes).
 - **Indexer Phase 3:** Restored structured data parsing (tasks, facets, plans) that was bypassed during multi-source refactor.
 - **Test Suite:** Updated and stabilized entire test suite for schema v4 and multi-source configuration.

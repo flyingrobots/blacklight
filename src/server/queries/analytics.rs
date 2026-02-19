@@ -134,12 +134,16 @@ pub fn get_tool_frequency(
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<ToolFrequency>> {
-    let mut sql = "SELECT tool_name, COUNT(*) as cnt FROM tool_calls WHERE 1=1".to_string();
-    if from.is_some() { sql.push_str(" AND timestamp >= ?2"); }
-    if to.is_some() { sql.push_str(" AND timestamp <= ?3"); }
-    sql.push_str(" GROUP BY tool_name ORDER BY cnt DESC LIMIT ?1");
+    let sql = "
+        SELECT tool_name, COUNT(*) as cnt 
+        FROM tool_calls 
+        WHERE (?2 IS NULL OR timestamp >= ?2)
+          AND (?3 IS NULL OR timestamp <= ?3)
+        GROUP BY tool_name 
+        ORDER BY cnt DESC 
+        LIMIT ?1";
 
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare(sql)?;
     let items = stmt
         .query_map(params![limit, from, to], |row| {
             Ok(ToolFrequency {
@@ -157,15 +161,12 @@ pub fn get_project_breakdown(
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<ProjectBreakdown>> {
-    let mut where_clause = "WHERE 1=1".to_string();
-    if from.is_some() { where_clause.push_str(" AND created_at >= ?1"); }
-    if to.is_some() { where_clause.push_str(" AND created_at <= ?2"); }
-
-    let sql = format!(
-        "WITH sess AS (
+    let sql = "
+        WITH sess AS (
            SELECT project_slug, id, COUNT(*) OVER(PARTITION BY project_slug) as session_count
            FROM sessions
-           {where_clause}
+           WHERE (?1 IS NULL OR created_at >= ?1)
+             AND (?2 IS NULL OR created_at <= ?2)
          ),
          msg AS (
            SELECT s.project_slug, COUNT(*) as message_count
@@ -185,10 +186,9 @@ pub fn get_project_breakdown(
          FROM sess
          LEFT JOIN msg ON msg.project_slug = sess.project_slug
          LEFT JOIN tc ON tc.project_slug = sess.project_slug
-         ORDER BY sess.session_count DESC"
-    );
+         ORDER BY sess.session_count DESC";
 
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare(sql)?;
     let items = stmt
         .query_map(params![from, to], |row| {
             Ok(ProjectBreakdown {
@@ -208,16 +208,13 @@ pub fn get_llm_breakdown(
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<LlmBreakdown>> {
-    let mut where_clause = "WHERE 1=1".to_string();
-    if from.is_some() { where_clause.push_str(" AND created_at >= ?1"); }
-    if to.is_some() { where_clause.push_str(" AND created_at <= ?2"); }
-
-    let sql = format!(
-        "WITH sess AS (
+    let sql = "
+        WITH sess AS (
            SELECT COALESCE(source_kind, 'unknown') as source_kind, id, 
                   COUNT(*) OVER(PARTITION BY COALESCE(source_kind, 'unknown')) as session_count
            FROM sessions
-           {where_clause}
+           WHERE (?1 IS NULL OR created_at >= ?1)
+             AND (?2 IS NULL OR created_at <= ?2)
          ),
          msg AS (
            SELECT s.source_kind, COUNT(*) as message_count
@@ -237,10 +234,9 @@ pub fn get_llm_breakdown(
          FROM sess
          LEFT JOIN msg ON msg.source_kind = sess.source_kind
          LEFT JOIN tc ON tc.source_kind = sess.source_kind
-         ORDER BY sess.session_count DESC"
-    );
+         ORDER BY sess.session_count DESC";
 
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare(sql)?;
     let items = stmt
         .query_map(params![from, to], |row| {
             Ok(LlmBreakdown {
