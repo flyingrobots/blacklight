@@ -19,7 +19,10 @@
       </div>
 
       <div class="section" v-if="recentSessions.length">
-        <h3>Recent Sessions</h3>
+        <div class="section-header">
+          <h3>Recent Sessions</h3>
+          <span class="nav-hint">Press [/] to search</span>
+        </div>
         <div class="session-list">
           <SessionCard
             v-for="session in recentSessions"
@@ -77,22 +80,33 @@ onMounted(async () => {
 .stat-card {
   background: var(--bl-bg-2);
   border: 1px solid var(--bl-border);
-  border-radius: var(--bl-radius-lg);
+  border-radius: var(--bl-radius-md);
   padding: 1.25rem;
 }
 .stat-value {
   font-size: var(--bl-text-xl);
   font-weight: 600;
   color: var(--bl-accent);
+  font-family: var(--bl-font-mono);
 }
 .stat-label {
   color: var(--bl-text-2);
-  font-size: var(--bl-text-md);
+  font-size: var(--bl-text-xs);
   margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--bl-font-mono);
 }
 .section { margin-bottom: 2rem; }
-.section h3 { margin-bottom: 1rem; color: var(--bl-text-2); }
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1rem;
+}
+.section h3 { color: var(--bl-text-2); font-family: var(--bl-font-mono); text-transform: uppercase; font-size: var(--bl-text-sm); }
+.nav-hint { font-family: var(--bl-font-mono); font-size: var(--bl-text-2xs); opacity: 0.6; }
 .session-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.loading, .error { padding: 2rem; text-align: center; }
+.loading, .error { padding: 2rem; text-align: center; font-family: var(--bl-font-mono); }
 .error { color: var(--bl-danger); }
 </style>

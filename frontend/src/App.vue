@@ -17,32 +17,38 @@
           </li>
         </ul>
       </nav>
+
       <div class="masthead">
         <div class="logo-wrap" ref="logoWrapRef">
-          <img :src="logoUrl" alt="Blacklight" class="logo-base" ref="logoRef" />
+          <img :src="logoUrl" alt="Blacklight" class="logo-base" ref="logoRef" :style="{ filter: logoFilter }" />
           <svg class="logo-circles" ref="circlesRef" preserveAspectRatio="xMinYMid meet"></svg>
         </div>
       </div>
-      <div class="nav-search">
-        <input
-          v-model="searchQuery"
-          placeholder="Search..."
-          class="search-input"
-          @keydown.enter="onSearch"
-        />
+
+      <div class="toolbar">
+        <div class="search-container">
+          <input
+            v-model="searchQuery"
+            placeholder="Search causal memory..."
+            class="search-input"
+            @keydown.enter="onSearch"
+          />
+        </div>
         <ThemeSwitcher />
       </div>
     </header>
+
     <main class="content">
       <router-view />
     </main>
+    
     <IndexerHUD />
     <NotificationContainer />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { gsap } from 'gsap'
 import logoUrl from '@/assets/BLACKLIGHT.svg'
@@ -54,7 +60,7 @@ import { useTheme } from '@/composables/useTheme'
 import { api } from '@/api/client'
 
 // Initialize theme on app load
-useTheme()
+const { currentThemeIndex, themes } = useTheme()
 
 const router = useRouter()
 const route = useRoute()
@@ -66,6 +72,8 @@ const pendingReviewCount = ref(0)
 let reviewPollTimer: ReturnType<typeof setInterval> | null = null
 const { connectWs, disconnectWs } = useNotifications()
 
+const isLightMode = computed(() => themes[currentThemeIndex.value].name === 'Quartz')
+
 function onSearch() {
   const q = searchQuery.value.trim()
   if (!q) return
@@ -73,15 +81,15 @@ function onSearch() {
 }
 
 const BASE_FILTER = 'invert(1) brightness(0.85) sepia(1) hue-rotate(180deg) saturate(3)'
+const LIGHT_FILTER = 'none'
+
+const logoFilter = computed(() => isLightMode.value ? LIGHT_FILTER : BASE_FILTER)
 
 // Letter positions in SVG viewBox coordinates.
-// BLACKLIGHT = 10 letters
 function getLetterBounds(): { cx: number; cy: number; r: number }[] {
   const LETTERS = 10
   const VB_W = 685.8
   const VB_H = 151.6
-  // Based on the SVG paths, the letters are roughly evenly spaced.
-  // The content seems to be centered.
   const letterW = VB_W / LETTERS
   const cy = VB_H / 2
 
@@ -115,18 +123,15 @@ onMounted(() => {
   svgEl.setAttribute('viewBox', `-10 -40 ${VB_W} ${VB_H}`)
 
   bounds.forEach(({ cx, cy, r }, i) => {
-    // --- Rainbow layer: clipped copy that cycles hue on hover ---
     const rainbowImg = document.createElement('img')
     rainbowImg.src = logoUrl
     rainbowImg.className = 'logo-letter-rainbow'
-    // clip-path uses % of the element's own dimensions.
     const leftPct = (i / 10) * 100
     const rightPct = 100 - ((i + 1) / 10) * 100
     rainbowImg.style.clipPath = `inset(0 ${rightPct}% 0 ${leftPct}%)`
     rainbowImg.style.opacity = '0'
     wrap.appendChild(rainbowImg)
 
-    // Per-letter rainbow tween
     const proxy = { hue: 0, opacity: 0 }
     let wantStop = true
 
@@ -147,13 +152,12 @@ onMounted(() => {
           }
         }
         rainbowImg.style.opacity = String(proxy.opacity)
-        rainbowImg.style.filter = `${BASE_FILTER} hue-rotate(${proxy.hue}deg)`
+        const filter = isLightMode.value ? 'none' : BASE_FILTER
+        rainbowImg.style.filter = filter === 'none' ? `hue-rotate(${proxy.hue}deg)` : `${filter} hue-rotate(${proxy.hue}deg)`
       },
     })
 
-    // --- Hit zone ---
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-    // Offset by -10 because viewBox starts at x=-10
     rect.setAttribute('x', String(cx - r - 10))
     rect.setAttribute('y', String(-40))
     rect.setAttribute('width', String(r * 2))
@@ -187,23 +191,26 @@ onUnmounted(() => {
 <style>
 .app {
   min-height: 100vh;
+  background: var(--bl-bg);
+  color: var(--bl-text);
+  transition: background 0.3s, color 0.3s;
 }
 
 /* Masthead */
 .masthead {
   display: flex;
   justify-content: center;
-  padding: 1rem 2rem 1rem;
+  padding: 2rem 2rem 1.5rem;
 }
+
 .logo-wrap {
   position: relative;
   width: 100%;
-  max-width: 1400px;
+  max-width: 1000px;
 }
 .logo-base {
   width: 100%;
   display: block;
-  filter: invert(1) brightness(0.85) sepia(1) hue-rotate(180deg) saturate(3);
 }
 .logo-letter-rainbow {
   position: absolute;
@@ -222,64 +229,71 @@ onUnmounted(() => {
 
 /* Horizontal nav */
 .nav-bar {
-  padding-top: 1rem;
+  border-bottom: 1px solid var(--bl-border);
+  background: var(--bl-bg);
+  z-index: 100;
 }
 .nav-links {
   list-style: none;
   display: flex;
   justify-content: center;
-  gap: 0.25rem;
-  padding: 0 1rem 0.5rem;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 .nav-links li a {
   display: block;
-  padding: 0.4rem 0.9rem;
-  border-radius: var(--bl-radius-sm);
+  padding: 0.5rem 1rem;
+  border-radius: var(--bl-radius-md);
   color: var(--bl-text-2);
   font-size: var(--bl-text-sm);
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  transition: color 0.15s, background 0.15s;
+  transition: all 0.2s;
 }
 .nav-links li a:hover {
   color: var(--bl-text);
-  background: var(--bl-bg-3);
+  background: var(--bl-bg-2);
   text-decoration: none;
 }
 .nav-links li a.router-link-active {
   color: var(--bl-accent);
-  background: var(--bl-bg-3);
+  background: var(--bl-bg-2);
   text-decoration: none;
-  box-shadow: inset 0 -2px 0 var(--bl-accent);
+  box-shadow: 0 2px 0 var(--bl-accent);
 }
 
-/* Header search */
-.nav-search {
+/* Sub-header with search and theme */
+.toolbar {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0 2rem 1.25rem;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
 }
-.nav-search .search-input {
+.search-container {
+  position: relative;
+  width: 100%;
+  max-width: 540px;
+}
+.search-container .search-input {
   background: var(--bl-bg-2);
   border: 1px solid var(--bl-border);
-  border-radius: var(--bl-radius-md);
+  border-radius: var(--bl-radius-lg);
   color: var(--bl-text);
   font-size: var(--bl-text-md);
-  padding: 0.5rem 1rem;
+  padding: 0.6rem 1rem;
   width: 100%;
-  max-width: 480px;
   outline: none;
-  transition: border-color 0.15s;
+  transition: all 0.2s;
 }
-.nav-search .search-input:focus {
+.search-container .search-input:focus {
   border-color: var(--bl-accent);
-}
-.nav-search .search-input::placeholder {
-  color: var(--bl-text-2);
-  opacity: 0.6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* Review badge */
@@ -294,7 +308,7 @@ onUnmounted(() => {
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: #ef4444;
+  background: var(--bl-danger);
   color: #fff;
   font-size: 0.6875rem;
   font-weight: 700;
@@ -307,6 +321,6 @@ onUnmounted(() => {
 .content {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1rem 2rem 4rem;
 }
 </style>

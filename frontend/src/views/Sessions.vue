@@ -6,7 +6,7 @@
       <input
         v-model="projectFilter"
         placeholder="Filter by project..."
-        class="input"
+        class="input search-input"
         @input="debouncedFetch"
       />
       <input
@@ -28,12 +28,15 @@
     <template v-else>
       <div class="meta">
         Showing {{ sessions.length }} of {{ total }} sessions
+        <span class="nav-hint">[j/k to navigate, enter to open]</span>
       </div>
       <div class="session-list">
         <SessionCard
-          v-for="session in sessions"
+          v-for="(session, index) in sessions"
           :key="session.id"
           :session="session"
+          :data-nav-index="index"
+          :class="{ 'selected': selectedIndex === index }"
         />
       </div>
       <div class="pagination" v-if="total > limit">
@@ -46,11 +49,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import type { SessionSummary } from '@/types'
 import SessionCard from '@/components/SessionCard.vue'
+import { useKeyboardNavigation } from '@/composables/useKeyboardNavigation'
 
+const router = useRouter()
 const sessions = ref<SessionSummary[]>([])
 const total = ref(0)
 const limit = ref(20)
@@ -65,6 +71,16 @@ let debounceTimer: ReturnType<typeof setTimeout>
 
 const currentPage = computed(() => Math.floor(offset.value / limit.value) + 1)
 const totalPages = computed(() => Math.ceil(total.value / limit.value))
+
+const { selectedIndex } = useKeyboardNavigation(
+  computed(() => sessions.value.length) as any,
+  (index) => {
+    const session = sessions.value[index]
+    if (session) {
+      router.push(`/sessions/${session.id}`)
+    }
+  }
+)
 
 function debouncedFetch() {
   clearTimeout(debounceTimer)
@@ -84,6 +100,8 @@ async function fetchSessions() {
     })
     sessions.value = result.items
     total.value = result.total
+    // Reset selection on fetch
+    selectedIndex.value = -1
   } catch (e: any) {
     error.value = e.message
   } finally {
@@ -119,10 +137,28 @@ onMounted(fetchSessions)
   padding: 0.5rem 0.75rem;
   color: var(--bl-text);
   font-size: var(--bl-text-md);
+  font-family: var(--bl-font-mono);
 }
 .input:focus { outline: none; border-color: var(--bl-accent); }
-.meta { color: var(--bl-text-2); font-size: var(--bl-text-md); margin-bottom: 1rem; }
+.meta { 
+  color: var(--bl-text-2); 
+  font-size: var(--bl-text-md); 
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+}
+.nav-hint {
+  font-family: var(--bl-font-mono);
+  font-size: var(--bl-text-xs);
+  opacity: 0.6;
+}
 .session-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+/* Keyboard Selection Style */
+.session-list :deep(.session-card.selected) {
+  outline: none;
+}
+
 .pagination {
   display: flex;
   align-items: center;
@@ -130,7 +166,7 @@ onMounted(fetchSessions)
   gap: 1rem;
   margin-top: 1.5rem;
 }
-.page-info { color: var(--bl-text-2); font-size: var(--bl-text-md); }
+.page-info { color: var(--bl-text-2); font-size: var(--bl-text-md); font-family: var(--bl-font-mono); }
 .btn {
   background: var(--bl-bg-3);
   border: 1px solid var(--bl-border);
@@ -138,6 +174,7 @@ onMounted(fetchSessions)
   padding: 0.5rem 1rem;
   color: var(--bl-text);
   cursor: pointer;
+  font-family: var(--bl-font-mono);
 }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn:hover:not(:disabled) { border-color: var(--bl-accent); }

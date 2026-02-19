@@ -27,6 +27,7 @@
   --bl-text-base: var(--font-size-1);  /* 1rem     */
   --bl-text-lg:   var(--font-size-2);  /* 1.25rem  */
   --bl-text-xl:   var(--font-size-3);  /* 1.5rem   */
+  --bl-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 
   /* Border radius */
   --bl-radius-sm:   4px;

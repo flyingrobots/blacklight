@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-02-18
+
+### Added
+- **TUI-Style Navigation:** Implemented `j/k` (Vim-style) keyboard navigation in the session list.
+- **Centered Scrolling:** Navigation uses GSAP `ScrollToPlugin` to keep the selected item vertically centered in the viewport.
+- **Vim-style Search:** Press `/` anywhere to instantly focus the search bar.
+- **Quartz Light Theme:** A high-contrast light mode for better legibility in bright environments.
+- **Terminal Aesthetic:** Introduced a "Mono" design system using monospace fonts, sharp borders, and high-contrast indicators (`>`) for a tactile TUI feel.
+
+### Changed
+- **Improved Contrast:** Adjusted background blending in dark themes (Slate, Indigo, Orchid) to eliminate "pitch black" backgrounds and improve text legibility.
+- **Layout Refinement:** Moved navigation tabs above the wordmark and tightened the header layout for better focal hierarchy.
+- **Developer Experience:** Added a root-level `npm run dev` script using `concurrently` to start both the Rust backend and Vite dev server.
+
+### Fixed
+- **Theme Compositor:** Fixed a build-breaking missing function in the theme engine.
+
 ## [0.2.0] - 2026-02-18
 
 ### Added
