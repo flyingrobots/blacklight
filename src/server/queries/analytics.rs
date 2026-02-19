@@ -134,18 +134,38 @@ pub fn get_tool_frequency(
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<ToolFrequency>> {
-    let sql = "
-        SELECT tool_name, COUNT(*) as cnt 
-        FROM tool_calls 
-        WHERE (?2 IS NULL OR timestamp >= ?2)
-          AND (?3 IS NULL OR timestamp <= ?3)
-        GROUP BY tool_name 
-        ORDER BY cnt DESC 
-        LIMIT ?1";
+    let mut where_clauses = Vec::new();
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-    let mut stmt = conn.prepare(sql)?;
+    if let Some(f) = from {
+        where_clauses.push(format!("timestamp >= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(f.to_string()));
+    }
+    if let Some(t) = to {
+        where_clauses.push(format!("timestamp <= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(t.to_string()));
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let sql = format!(
+        "SELECT tool_name, COUNT(*) as cnt 
+         FROM tool_calls 
+         {where_sql}
+         GROUP BY tool_name 
+         ORDER BY cnt DESC 
+         LIMIT ?{}",
+        params_vec.len() + 1
+    );
+    params_vec.push(Box::new(limit));
+
+    let mut stmt = conn.prepare(&sql)?;
     let items = stmt
-        .query_map(params![limit, from, to], |row| {
+        .query_map(rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())), |row| {
             Ok(ToolFrequency {
                 tool_name: row.get(0)?,
                 call_count: row.get(1)?,
@@ -161,36 +181,59 @@ pub fn get_project_breakdown(
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<ProjectBreakdown>> {
-    let sql = "
-        WITH sess AS (
-           SELECT project_slug, id, COUNT(*) OVER(PARTITION BY project_slug) as session_count
+    let mut where_clauses = Vec::new();
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(f) = from {
+        where_clauses.push(format!("created_at >= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(f.to_string()));
+    }
+    if let Some(t) = to {
+        where_clauses.push(format!("created_at <= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(t.to_string()));
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let sql = format!(
+        "WITH sess AS (
+           SELECT project_slug, id
            FROM sessions
-           WHERE (?1 IS NULL OR created_at >= ?1)
-             AND (?2 IS NULL OR created_at <= ?2)
+           {where_sql}
          ),
-         msg AS (
+         proj_counts AS (
+           SELECT project_slug, COUNT(*) as session_count
+           FROM sess
+           GROUP BY project_slug
+         ),
+         msg_counts AS (
            SELECT s.project_slug, COUNT(*) as message_count
            FROM messages m
            JOIN sess s ON s.id = m.session_id
            GROUP BY s.project_slug
          ),
-         tc AS (
+         tc_counts AS (
            SELECT s.project_slug, COUNT(*) as tool_call_count
            FROM tool_calls t
            JOIN sess s ON s.id = t.session_id
            GROUP BY s.project_slug
          )
-         SELECT DISTINCT sess.project_slug, sess.session_count,
-                COALESCE(msg.message_count, 0),
+         SELECT pc.project_slug, pc.session_count,
+                COALESCE(mc.message_count, 0),
                 COALESCE(tc.tool_call_count, 0)
-         FROM sess
-         LEFT JOIN msg ON msg.project_slug = sess.project_slug
-         LEFT JOIN tc ON tc.project_slug = sess.project_slug
-         ORDER BY sess.session_count DESC";
+         FROM proj_counts pc
+         LEFT JOIN msg_counts mc ON mc.project_slug = pc.project_slug
+         LEFT JOIN tc_counts tc ON tc.project_slug = pc.project_slug
+         ORDER BY pc.session_count DESC"
+    );
 
-    let mut stmt = conn.prepare(sql)?;
+    let mut stmt = conn.prepare(&sql)?;
     let items = stmt
-        .query_map(params![from, to], |row| {
+        .query_map(rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())), |row| {
             Ok(ProjectBreakdown {
                 project_slug: row.get(0)?,
                 session_count: row.get(1)?,
@@ -208,37 +251,59 @@ pub fn get_llm_breakdown(
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<LlmBreakdown>> {
-    let sql = "
-        WITH sess AS (
-           SELECT COALESCE(source_kind, 'unknown') as source_kind, id, 
-                  COUNT(*) OVER(PARTITION BY COALESCE(source_kind, 'unknown')) as session_count
+    let mut where_clauses = Vec::new();
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(f) = from {
+        where_clauses.push(format!("created_at >= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(f.to_string()));
+    }
+    if let Some(t) = to {
+        where_clauses.push(format!("created_at <= ?{}", params_vec.len() + 1));
+        params_vec.push(Box::new(t.to_string()));
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let sql = format!(
+        "WITH sess AS (
+           SELECT COALESCE(source_kind, 'unknown') as source_kind, id
            FROM sessions
-           WHERE (?1 IS NULL OR created_at >= ?1)
-             AND (?2 IS NULL OR created_at <= ?2)
+           {where_sql}
          ),
-         msg AS (
+         llm_counts AS (
+           SELECT source_kind, COUNT(*) as session_count
+           FROM sess
+           GROUP BY source_kind
+         ),
+         msg_counts AS (
            SELECT s.source_kind, COUNT(*) as message_count
            FROM messages m
            JOIN sess s ON s.id = m.session_id
            GROUP BY s.source_kind
          ),
-         tc AS (
+         tc_counts AS (
            SELECT s.source_kind, COUNT(*) as tool_call_count
            FROM tool_calls t
            JOIN sess s ON s.id = t.session_id
            GROUP BY s.source_kind
          )
-         SELECT DISTINCT sess.source_kind, sess.session_count,
-                COALESCE(msg.message_count, 0),
+         SELECT lc.source_kind, lc.session_count,
+                COALESCE(mc.message_count, 0),
                 COALESCE(tc.tool_call_count, 0)
-         FROM sess
-         LEFT JOIN msg ON msg.source_kind = sess.source_kind
-         LEFT JOIN tc ON tc.source_kind = sess.source_kind
-         ORDER BY sess.session_count DESC";
+         FROM llm_counts lc
+         LEFT JOIN msg_counts mc ON mc.source_kind = lc.source_kind
+         LEFT JOIN tc_counts tc ON tc.source_kind = lc.source_kind
+         ORDER BY lc.session_count DESC"
+    );
 
-    let mut stmt = conn.prepare(sql)?;
+    let mut stmt = conn.prepare(&sql)?;
     let items = stmt
-        .query_map(params![from, to], |row| {
+        .query_map(rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())), |row| {
             Ok(LlmBreakdown {
                 source_kind: row.get(0)?,
                 session_count: row.get(1)?,
