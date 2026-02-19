@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## [0.3.0] - 2026-02-18
 
 ### Added
+- **D3 Dashboard Visualizations:** Replaced static stats with interactive D3.js charts, including a GitHub-style activity heatmap and horizontal bar charts for Project/LLM breakdowns.
+- **Dynamic Time Windowing:** Added a global time slider (7d, 30d, 90d, 1y, All) that re-aggregates all dashboard analytics in real-time.
+- **LLM Usage Breakdown:** New analytics for Sessions, Messages, and Tool usage partitioned by LLM source (Claude, Gemini, Codex).
 - **TUI-Style Navigation:** Implemented `j/k` (Vim-style) keyboard navigation in the session list.
 - **Centered Scrolling:** Navigation uses GSAP `ScrollToPlugin` to keep the selected item vertically centered in the viewport.
 - **Vim-style Search:** Press `/` anywhere to instantly focus the search bar.
@@ -12,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - **Terminal Aesthetic:** Introduced a "Mono" design system using monospace fonts, sharp borders, and high-contrast indicators (`>`) for a tactile TUI feel.
 
 ### Changed
+- **Backend Stability:** Switched server binding to `127.0.0.1` and added startup delays to frontend polling to eliminate connection noise during development.
 - **Improved Contrast:** Adjusted background blending in dark themes (Slate, Indigo, Orchid) to eliminate "pitch black" backgrounds and improve text legibility.
 - **Layout Refinement:** Moved navigation tabs above the wordmark and tightened the header layout for better focal hierarchy.
 - **Developer Experience:** Added a root-level `npm run dev` script using `concurrently` to start both the Rust backend and Vite dev server.

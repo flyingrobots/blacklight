@@ -29,7 +29,7 @@
         <div class="search-container">
           <input
             v-model="searchQuery"
-            placeholder="Search causal memory..."
+            placeholder="Search..."
             class="search-input"
             @keydown.enter="onSearch"
           />
@@ -109,7 +109,8 @@ async function pollPendingReview() {
 
 onMounted(() => {
   connectWs()
-  pollPendingReview()
+  // Delay initial poll to allow backend to start up
+  setTimeout(pollPendingReview, 2000)
   reviewPollTimer = setInterval(pollPendingReview, 30_000)
 
   if (!circlesRef.value || !logoWrapRef.value) return

@@ -149,6 +149,13 @@ export interface ProjectBreakdown {
   tool_call_count: number
 }
 
+export interface LlmBreakdown {
+  source_kind: string
+  session_count: number
+  message_count: number
+  tool_call_count: number
+}
+
 export interface OutcomeStats {
   outcome: string
   count: number

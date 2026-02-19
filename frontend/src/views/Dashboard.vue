@@ -1,27 +1,51 @@
 <template>
   <div class="dashboard">
-    <div v-if="loading" class="loading">Loading...</div>
+    <div v-if="loading && !overview" class="loading">Loading dashboard...</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <template v-else>
-      <div class="stats-grid" v-if="overview">
-        <div class="stat-card">
-          <div class="stat-value">{{ overview.total_sessions.toLocaleString() }}</div>
-          <div class="stat-label">Sessions</div>
+      <!-- Top Row: Overview Heatmap -->
+      <section class="section activity-section">
+        <div class="section-header">
+          <h3>Daily Activity</h3>
+          <span class="nav-hint">Sessions per day</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-value">{{ overview.total_messages.toLocaleString() }}</div>
-          <div class="stat-label">Messages</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">{{ formatBytes(overview.db_size_bytes) }}</div>
-          <div class="stat-label">DB Size</div>
-        </div>
+        <ActivityHeatmap :data="dailyStats" />
+      </section>
+
+      <!-- Middle: Time Window Controller -->
+      <section class="section controls-section">
+        <TimeSlider @change="onTimeWindowChange" />
+      </section>
+
+      <!-- Grid: Analytics Breakdown -->
+      <div class="analytics-grid">
+        <DashboardBarChart
+          title="Sessions per Project"
+          :data="projectChartData"
+          color="var(--bl-accent)"
+        />
+        <DashboardBarChart
+          title="Sessions per LLM"
+          :data="llmSessionData"
+          color="var(--bl-success)"
+        />
+        <DashboardBarChart
+          title="Messages per LLM"
+          :data="llmMessageData"
+          color="var(--bl-purple)"
+        />
+        <DashboardBarChart
+          title="Tools per LLM"
+          :data="llmToolData"
+          color="var(--bl-warning)"
+        />
       </div>
 
-      <div class="section" v-if="recentSessions.length">
+      <!-- Bottom: Recent Sessions -->
+      <section class="section recent-section" v-if="recentSessions.length">
         <div class="section-header">
           <h3>Recent Sessions</h3>
-          <span class="nav-hint">Press [/] to search</span>
+          <router-link to="/sessions" class="nav-hint">View All →</router-link>
         </div>
         <div class="session-list">
           <SessionCard
@@ -30,83 +54,143 @@
             :session="session"
           />
         </div>
-      </div>
+      </section>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { api } from '@/api/client'
-import type { AnalyticsOverview, SessionSummary } from '@/types'
+import type { AnalyticsOverview, SessionSummary, DailyStats, ProjectBreakdown, LlmBreakdown } from '@/types'
 import SessionCard from '@/components/SessionCard.vue'
+import ActivityHeatmap from '@/components/ActivityHeatmap.vue'
+import DashboardBarChart from '@/components/DashboardBarChart.vue'
+import TimeSlider, { type TimeOption } from '@/components/TimeSlider.vue'
 
 const loading = ref(true)
 const error = ref('')
 const overview = ref<AnalyticsOverview | null>(null)
 const recentSessions = ref<SessionSummary[]>([])
+const projects = ref<ProjectBreakdown[]>([])
+const llmStats = ref<LlmBreakdown[]>([])
+const dailyStats = ref<DailyStats[]>([])
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+const projectChartData = computed(() => 
+  projects.value.map(p => ({ label: p.project_slug, value: p.session_count }))
+)
+
+const llmSessionData = computed(() => 
+  llmStats.value.map(l => ({ label: l.source_kind, value: l.session_count }))
+)
+
+const llmMessageData = computed(() => 
+  llmStats.value.map(l => ({ label: l.source_kind, value: l.message_count }))
+)
+
+const llmToolData = computed(() => 
+  llmStats.value.map(l => ({ label: l.source_kind, value: l.tool_call_count }))
+)
+
+async function fetchHeatmap() {
+  // Always fetch last 6 months for the heatmap
+  const sixMonthsAgo = new Date()
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+  const from = sixMonthsAgo.toISOString().split('T')[0]
+  const ds = await api.analytics.daily({ from })
+  dailyStats.value = ds
 }
 
-onMounted(async () => {
+async function fetchData(from?: string) {
+  loading.value = true
   try {
-    const [ov, sessions] = await Promise.all([
+    const [ov, proj, ls, sessions] = await Promise.all([
       api.analytics.overview(),
-      api.sessions.list({ limit: 3 }),
+      api.analytics.projects({ from }),
+      api.analytics.llms({ from }),
+      api.sessions.list({ limit: 5 }),
     ])
     overview.value = ov
+    projects.value = proj
+    llmStats.value = ls
     recentSessions.value = sessions.items
   } catch (e: any) {
     error.value = e.message
   } finally {
     loading.value = false
   }
+}
+
+function onTimeWindowChange(option: TimeOption) {
+  let from: string | undefined
+  if (option.days) {
+    const d = new Date()
+    d.setDate(d.getDate() - option.days)
+    from = d.toISOString().split('T')[0]
+  }
+  fetchData(from)
+}
+
+onMounted(() => {
+  fetchHeatmap()
+  fetchData()
 })
 </script>
 
 <style scoped>
-.stats-grid {
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.analytics-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  margin-bottom: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 1.5rem;
 }
-.stat-card {
-  background: var(--bl-bg-2);
-  border: 1px solid var(--bl-border);
-  border-radius: var(--bl-radius-md);
-  padding: 1.25rem;
-}
-.stat-value {
-  font-size: var(--bl-text-xl);
-  font-weight: 600;
-  color: var(--bl-accent);
-  font-family: var(--bl-font-mono);
-}
-.stat-label {
-  color: var(--bl-text-2);
-  font-size: var(--bl-text-xs);
-  margin-top: 0.25rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-family: var(--bl-font-mono);
-}
-.section { margin-bottom: 2rem; }
+
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 1rem;
 }
-.section h3 { color: var(--bl-text-2); font-family: var(--bl-font-mono); text-transform: uppercase; font-size: var(--bl-text-sm); }
-.nav-hint { font-family: var(--bl-font-mono); font-size: var(--bl-text-2xs); opacity: 0.6; }
-.session-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.loading, .error { padding: 2rem; text-align: center; font-family: var(--bl-font-mono); }
+
+.section h3 {
+  color: var(--bl-text-2);
+  font-family: var(--bl-font-mono);
+  text-transform: uppercase;
+  font-size: var(--bl-text-sm);
+  letter-spacing: 0.05em;
+}
+
+.nav-hint {
+  font-family: var(--bl-font-mono);
+  font-size: var(--bl-text-2xs);
+  opacity: 0.6;
+  text-decoration: none;
+  color: var(--bl-accent);
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.loading, .error {
+  padding: 4rem;
+  text-align: center;
+  font-family: var(--bl-font-mono);
+  font-size: var(--bl-text-md);
+}
+
 .error { color: var(--bl-danger); }
+
+@media (max-width: 900px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

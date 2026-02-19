@@ -4,7 +4,7 @@ import type {
   DailyStats, ModelUsage, ToolFrequency, ProjectBreakdown,
   ProjectDetail, OutcomeStats, StorageOverview, ContentBlob,
   IndexCoverage, IndexerStatusResponse, EnricherStatusResponse,
-  ReviewItem, ScheduleConfig, MigrationStatusResponse
+  ReviewItem, ScheduleConfig, MigrationStatusResponse, LlmBreakdown
 } from '@/types'
 
 const BASE = '/api'
@@ -73,9 +73,12 @@ export const api = {
     daily: (params?: { from?: string; to?: string }) =>
       get<DailyStats[]>(`${BASE}/analytics/daily`, params),
     models: () => get<ModelUsage[]>(`${BASE}/analytics/models`),
-    tools: (params?: { limit?: number }) =>
+    tools: (params?: { limit?: number; from?: string; to?: string }) =>
       get<ToolFrequency[]>(`${BASE}/analytics/tools`, params),
-    projects: () => get<ProjectBreakdown[]>(`${BASE}/analytics/projects`),
+    projects: (params?: { from?: string; to?: string }) =>
+      get<ProjectBreakdown[]>(`${BASE}/analytics/projects`, params),
+    llms: (params?: { from?: string; to?: string }) =>
+      get<LlmBreakdown[]>(`${BASE}/analytics/llms`, params),
     outcomes: () => get<OutcomeStats[]>(`${BASE}/analytics/outcomes`),
     coverage: () => get<IndexCoverage>(`${BASE}/analytics/coverage`),
   },

@@ -3,7 +3,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 
 use crate::server::errors::AppError;
-use crate::server::params::{DateRangeParams, LimitParams};
+use crate::server::params::DateRangeParams;
 use crate::server::queries::analytics;
 use crate::server::state::AppState;
 
@@ -15,6 +15,7 @@ pub fn routes() -> Router<AppState> {
         .route("/analytics/models", get(models))
         .route("/analytics/tools", get(tools))
         .route("/analytics/projects", get(projects))
+        .route("/analytics/llms", get(llms))
         .route("/analytics/outcomes", get(outcomes))
 }
 
@@ -69,11 +70,15 @@ async fn models(
 
 async fn tools(
     State(state): State<AppState>,
-    Query(params): Query<LimitParams>,
+    Query(params): Query<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+    let from = params.get("from").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let to = params.get("to").and_then(|v| v.as_str()).map(|s| s.to_string());
+
     let result = state
         .db
-        .call(move |conn| analytics::get_tool_frequency(conn, params.limit))
+        .call(move |conn| analytics::get_tool_frequency(conn, limit, from.as_deref(), to.as_deref()))
         .await?;
 
     Ok(Json(serde_json::to_value(result)?))
@@ -81,10 +86,23 @@ async fn tools(
 
 async fn projects(
     State(state): State<AppState>,
+    Query(params): Query<DateRangeParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let result = state
         .db
-        .call(analytics::get_project_breakdown)
+        .call(move |conn| analytics::get_project_breakdown(conn, params.from.as_deref(), params.to.as_deref()))
+        .await?;
+
+    Ok(Json(serde_json::to_value(result)?))
+}
+
+async fn llms(
+    State(state): State<AppState>,
+    Query(params): Query<DateRangeParams>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let result = state
+        .db
+        .call(move |conn| analytics::get_llm_breakdown(conn, params.from.as_deref(), params.to.as_deref()))
         .await?;
 
     Ok(Json(serde_json::to_value(result)?))

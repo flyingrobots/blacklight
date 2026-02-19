@@ -2,8 +2,8 @@ use anyhow::Result;
 use rusqlite::{params, Connection};
 
 use crate::server::responses::{
-    AnalyticsOverview, CoverageByKind, DailyStats, IndexCoverage, ModelUsage, OutcomeStats,
-    ProjectBreakdown, ToolFrequency,
+    AnalyticsOverview, CoverageByKind, DailyStats, IndexCoverage, LlmBreakdown, ModelUsage,
+    OutcomeStats, ProjectBreakdown, ToolFrequency,
 };
 
 pub fn get_overview(conn: &Connection, db_path: &str) -> Result<AnalyticsOverview> {
@@ -128,17 +128,20 @@ pub fn get_model_usage(conn: &Connection) -> Result<Vec<ModelUsage>> {
     Ok(items)
 }
 
-pub fn get_tool_frequency(conn: &Connection, limit: i64) -> Result<Vec<ToolFrequency>> {
-    let mut stmt = conn.prepare(
-        "SELECT tool_name, COUNT(*) as cnt
-         FROM tool_calls
-         GROUP BY tool_name
-         ORDER BY cnt DESC
-         LIMIT ?1",
-    )?;
+pub fn get_tool_frequency(
+    conn: &Connection,
+    limit: i64,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Vec<ToolFrequency>> {
+    let mut sql = "SELECT tool_name, COUNT(*) as cnt FROM tool_calls WHERE 1=1".to_string();
+    if from.is_some() { sql.push_str(" AND timestamp >= ?2"); }
+    if to.is_some() { sql.push_str(" AND timestamp <= ?3"); }
+    sql.push_str(" GROUP BY tool_name ORDER BY cnt DESC LIMIT ?1");
 
+    let mut stmt = conn.prepare(&sql)?;
     let items = stmt
-        .query_map(params![limit], |row| {
+        .query_map(params![limit, from, to], |row| {
             Ok(ToolFrequency {
                 tool_name: row.get(0)?,
                 call_count: row.get(1)?,
@@ -149,39 +152,99 @@ pub fn get_tool_frequency(conn: &Connection, limit: i64) -> Result<Vec<ToolFrequ
     Ok(items)
 }
 
-pub fn get_project_breakdown(conn: &Connection) -> Result<Vec<ProjectBreakdown>> {
-    // Pre-aggregate each table separately via CTEs to avoid cross-product explosion.
-    let mut stmt = conn.prepare(
+pub fn get_project_breakdown(
+    conn: &Connection,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Vec<ProjectBreakdown>> {
+    let mut where_clause = "WHERE 1=1".to_string();
+    if from.is_some() { where_clause.push_str(" AND created_at >= ?1"); }
+    if to.is_some() { where_clause.push_str(" AND created_at <= ?2"); }
+
+    let sql = format!(
         "WITH sess AS (
-           SELECT project_slug, COUNT(*) as session_count
+           SELECT project_slug, id, COUNT(*) OVER(PARTITION BY project_slug) as session_count
            FROM sessions
-           GROUP BY project_slug
+           {where_clause}
          ),
          msg AS (
            SELECT s.project_slug, COUNT(*) as message_count
            FROM messages m
-           JOIN sessions s ON s.id = m.session_id
+           JOIN sess s ON s.id = m.session_id
            GROUP BY s.project_slug
          ),
          tc AS (
            SELECT s.project_slug, COUNT(*) as tool_call_count
            FROM tool_calls t
-           JOIN sessions s ON s.id = t.session_id
+           JOIN sess s ON s.id = t.session_id
            GROUP BY s.project_slug
          )
-         SELECT sess.project_slug, sess.session_count,
+         SELECT DISTINCT sess.project_slug, sess.session_count,
                 COALESCE(msg.message_count, 0),
                 COALESCE(tc.tool_call_count, 0)
          FROM sess
          LEFT JOIN msg ON msg.project_slug = sess.project_slug
          LEFT JOIN tc ON tc.project_slug = sess.project_slug
-         ORDER BY sess.session_count DESC",
-    )?;
+         ORDER BY sess.session_count DESC"
+    );
 
+    let mut stmt = conn.prepare(&sql)?;
     let items = stmt
-        .query_map([], |row| {
+        .query_map(params![from, to], |row| {
             Ok(ProjectBreakdown {
                 project_slug: row.get(0)?,
+                session_count: row.get(1)?,
+                message_count: row.get(2)?,
+                tool_call_count: row.get(3)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    Ok(items)
+}
+
+pub fn get_llm_breakdown(
+    conn: &Connection,
+    from: Option<&str>,
+    to: Option<&str>,
+) -> Result<Vec<LlmBreakdown>> {
+    let mut where_clause = "WHERE 1=1".to_string();
+    if from.is_some() { where_clause.push_str(" AND created_at >= ?1"); }
+    if to.is_some() { where_clause.push_str(" AND created_at <= ?2"); }
+
+    let sql = format!(
+        "WITH sess AS (
+           SELECT COALESCE(source_kind, 'unknown') as source_kind, id, 
+                  COUNT(*) OVER(PARTITION BY COALESCE(source_kind, 'unknown')) as session_count
+           FROM sessions
+           {where_clause}
+         ),
+         msg AS (
+           SELECT s.source_kind, COUNT(*) as message_count
+           FROM messages m
+           JOIN sess s ON s.id = m.session_id
+           GROUP BY s.source_kind
+         ),
+         tc AS (
+           SELECT s.source_kind, COUNT(*) as tool_call_count
+           FROM tool_calls t
+           JOIN sess s ON s.id = t.session_id
+           GROUP BY s.source_kind
+         )
+         SELECT DISTINCT sess.source_kind, sess.session_count,
+                COALESCE(msg.message_count, 0),
+                COALESCE(tc.tool_call_count, 0)
+         FROM sess
+         LEFT JOIN msg ON msg.source_kind = sess.source_kind
+         LEFT JOIN tc ON tc.source_kind = sess.source_kind
+         ORDER BY sess.session_count DESC"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let items = stmt
+        .query_map(params![from, to], |row| {
+            Ok(LlmBreakdown {
+                source_kind: row.get(0)?,
                 session_count: row.get(1)?,
                 message_count: row.get(2)?,
                 tool_call_count: row.get(3)?,

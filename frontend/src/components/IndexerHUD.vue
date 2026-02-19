@@ -523,10 +523,13 @@ async function saveSchedule() {
 }
 
 onMounted(async () => {
-  await pollStatus()
-  await fetchCoverageAndOverview()
-  loadSchedule()
-  startPolling()
+  // Small delay to let backend wake up
+  setTimeout(async () => {
+    await pollStatus()
+    await fetchCoverageAndOverview()
+    loadSchedule()
+    startPolling()
+  }, 1000)
 })
 
 onUnmounted(() => {

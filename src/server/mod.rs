@@ -40,7 +40,7 @@ pub async fn start_server(
 
     let app = router::build_router(state);
 
-    let addr = format!("0.0.0.0:{port}");
+    let addr = format!("127.0.0.1:{port}");
     let url = format!("http://{addr}");
 
     tracing::info!("starting server at {url}");
@@ -52,6 +52,7 @@ pub async fn start_server(
     }
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("Blacklight backend is READY at {}", url);
     axum::serve(listener, app).await?;
 
     Ok(())

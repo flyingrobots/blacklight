@@ -231,6 +231,15 @@ pub struct ProjectBreakdown {
     pub tool_call_count: i64,
 }
 
+/// Per-LLM breakdown (source_kind).
+#[derive(Debug, Serialize)]
+pub struct LlmBreakdown {
+    pub source_kind: String,
+    pub session_count: i64,
+    pub message_count: i64,
+    pub tool_call_count: i64,
+}
+
 /// Rich per-project detail for the Projects page.
 #[derive(Debug, Serialize)]
 pub struct ProjectDetail {
