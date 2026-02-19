@@ -66,10 +66,11 @@ function renderHeatmap() {
   svg.attr('width', width)
      .attr('height', height)
 
-  // Use CSS variables for the color scale
   const colorScale = d3.scaleThreshold<number, string>()
     .domain([1, 2, 5, 10])
-    .range(['var(--bl-bg-3)', 'rgba(59, 130, 246, 0.2)', 'rgba(59, 130, 246, 0.4)', 'rgba(59, 130, 246, 0.7)', 'var(--bl-accent)'])
+    .range(['var(--bl-bg-3)', 'var(--bl-accent)', 'var(--bl-accent)', 'var(--bl-accent)', 'var(--bl-accent)'])
+    // We will apply opacity manually to the rects instead of using multiple var colors
+    // because interpolating CSS vars in D3 is tricky.
 
   const monthFormat = d3.timeFormat('%b')
 
@@ -92,9 +93,9 @@ function renderHeatmap() {
     .attr('y', -8)
     .text(d => monthFormat(d))
     .style('font-size', '10px')
-    .style('fill', 'var(--bl-text-3)')
+    .style('fill', 'var(--bl-text-2)')
     .style('font-family', 'var(--bl-font-mono)')
-    .style('font-weight', 'bold')
+    .style('font-weight', '600')
 
   // Day labels
   const days = ['Mon', 'Wed', 'Fri']
@@ -107,7 +108,7 @@ function renderHeatmap() {
     .attr('y', (d, i) => (i * 2 + 1) * (cellSize + cellPadding) + cellSize / 2 + 4)
     .text(d => d)
     .style('font-size', '10px')
-    .style('fill', 'var(--bl-text-3)')
+    .style('fill', 'var(--bl-text-2)')
     .style('font-family', 'var(--bl-font-mono)')
 
   // Cells
@@ -125,7 +126,14 @@ function renderHeatmap() {
     .attr('y', d => d.date.getDay() * (cellSize + cellPadding))
     .attr('rx', 2)
     .attr('ry', 2)
-    .attr('fill', d => colorScale(d.count))
+    .attr('fill', 'var(--bl-accent)')
+    .style('opacity', d => {
+      if (d.count === 0) return 0.1;
+      if (d.count < 2) return 0.3;
+      if (d.count < 5) return 0.5;
+      if (d.count < 10) return 0.8;
+      return 1.0;
+    })
     .style('cursor', 'pointer')
     .on('mouseenter', (event, d) => {
       const projects = props.projectData.filter(p => p.date === d.dateStr)

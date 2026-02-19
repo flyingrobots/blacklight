@@ -47,7 +47,7 @@ const emit = defineEmits<{
 
 watch(selectedIndex, (newVal) => {
   emit('change', options[Number(newVal)])
-})
+}, { immediate: true })
 </script>
 
 <style scoped>

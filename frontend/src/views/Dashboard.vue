@@ -156,7 +156,15 @@ function onTimeWindowChange(option: TimeOption) {
 }
 
 onMounted(() => {
-  // fetchData is called by TimeSlider's initial selection (7d)
+  // TimeSlider will trigger fetchData(7d) on mount due to immediate: true watch
+  // but we add a safety check here to ensure we don't stay in loading state
+  setTimeout(() => {
+    if (loading.value && !overview.value) {
+      const d = new Date()
+      d.setDate(d.getDate() - 7)
+      fetchData(d.toISOString().split('T')[0])
+    }
+  }, 1000)
 })
 </script>
 

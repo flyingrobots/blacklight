@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
 - **Backend Stability:** Switched server binding to `127.0.0.1` and added startup delays to frontend polling to eliminate connection noise during development.
 
 ### Fixed
+- **Dashboard Initialization:** Resolved an issue where the dashboard could stay in a "Loading..." state by ensuring the time slider always emits an initial selection and adding a fallback fetch on mount.
+- **Heatmap Styling:** Fixed "impossible to read" text in the heatmap by using theme tokens and improving contrast.
 - **Theme Compositor:** Fixed a build-breaking missing function in the theme engine.
 
 ## [0.2.0] - 2026-02-18
