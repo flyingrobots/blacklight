@@ -27,11 +27,49 @@ pub struct GeminiMessage {
     pub timestamp: String,
     #[serde(rename = "type")]
     pub msg_type: String,
-    pub content: String,
+    pub content: GeminiContent,
     #[serde(rename = "toolCalls")]
     pub tool_calls: Option<Vec<GeminiToolCall>>,
     pub thoughts: Option<Vec<GeminiThought>>,
     pub model: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum GeminiContent {
+    Text(String),
+    Blocks(Vec<serde_json::Value>),
+}
+
+impl GeminiContent {
+    pub fn as_text(&self) -> String {
+        match self {
+            Self::Text(s) => s.clone(),
+            Self::Blocks(blocks) => {
+                let mut full_text = String::new();
+                for block in blocks {
+                    if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                        full_text.push_str(text);
+                    }
+                }
+                full_text
+            }
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Text(s) => s.is_empty(),
+            Self::Blocks(blocks) => blocks.is_empty(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Text(s) => s.len(),
+            Self::Blocks(_) => self.as_text().len(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -87,7 +125,8 @@ pub fn process_gemini_session(
         let mut fp_hasher = blake3::Hasher::new();
         fp_hasher.update(msg.msg_type.as_bytes());
         fp_hasher.update(msg.timestamp.as_bytes());
-        fp_hasher.update(msg.content.as_bytes());
+        let content_text = msg.content.as_text();
+        fp_hasher.update(content_text.as_bytes());
 
         let msg_row = MessageRow {
             id: msg.id.clone(),
@@ -107,11 +146,11 @@ pub fn process_gemini_session(
 
         // Text content
         if !msg.content.is_empty() {
-            let hash = hash_content(&msg.content);
-            let size = msg.content.len() as i64;
-            ops.blobs.push((hash.clone(), msg.content.clone(), size, "text".into()));
+            let hash = hash_content(&content_text);
+            let size = content_text.len() as i64;
+            ops.blobs.push((hash.clone(), content_text.clone(), size, "text".into()));
             ops.blob_refs.push((hash.clone(), msg.id.clone(), "response_text".into()));
-            ops.fts_entries.push((hash.clone(), "text".into(), msg.content.clone()));
+            ops.fts_entries.push((hash.clone(), "text".into(), content_text));
             ops.content_blocks.push(ContentBlockRow {
                 message_id: msg.id.clone(),
                 block_index: 0,

@@ -556,31 +556,57 @@ fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: &Pat
 
     match mode {
         BackupMode::GitCas => {
-            let output = std::process::Command::new("git").args(["cas", "store", &path.to_string_lossy(), "--slug", &slug, "--tree"]).current_dir(backup_dir).output().context("failed to run git cas store")?;
+            let mut attempts = 0;
+            let max_attempts = 3;
+            let mut last_err = String::new();
 
-            if !output.status.success() {
-                let err = String::from_utf8_lossy(&output.stderr);
-                anyhow::bail!("git cas store failed: {}", err);
+            while attempts < max_attempts {
+                let output_res = std::process::Command::new("git")
+                    .args(["cas", "store", &path.to_string_lossy(), "--slug", &slug, "--tree"])
+                    .current_dir(backup_dir)
+                    .output();
+
+                match output_res {
+                    Ok(output) if output.status.success() => {
+                        let manifest_json = String::from_utf8_lossy(&output.stdout);
+                        let manifest: serde_json::Value = serde_json::from_str(&manifest_json).context("failed to parse git-cas manifest")?;
+                        
+                        let content_hash = manifest["hash"].as_str().or_else(|| manifest["oid"].as_str()).unwrap_or("unknown").to_string();
+                        let file_size = std::fs::metadata(path)?.len();
+
+                        let session_id = if file_name.starts_with("session-") {
+                            file_name.strip_prefix("session-").and_then(|s| s.strip_suffix(".json"))
+                        } else if file_name.starts_with("rollout-") {
+                            file_name.strip_prefix("rollout-").and_then(|s| {
+                                let s = s.strip_suffix(".jsonl").unwrap_or(s);
+                                if s.len() >= 36 { Some(&s[s.len()-36..]) } else { None }
+                            })
+                        } else { None };
+
+                        if let Some(sid) = session_id {
+                            db_ops::record_backup(conn, sid, &path.to_string_lossy(), &content_hash, file_size)?;
+                        }
+                        return Ok(());
+                    }
+                    Ok(output) => {
+                        let err = String::from_utf8_lossy(&output.stderr);
+                        if err.contains("'cas' is not a git command") {
+                            tracing::warn!("git-cas not found, falling back to simple backup for {}", path.display());
+                            return backup_source_file(conn, path, backup_dir, BackupMode::Simple, source_prefix);
+                        }
+                        last_err = err.to_string();
+                        attempts += 1;
+                        if attempts < max_attempts {
+                            std::thread::sleep(std::time::Duration::from_millis(100 * attempts as u64));
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to execute git command: {e}. falling back to simple backup");
+                        return backup_source_file(conn, path, backup_dir, BackupMode::Simple, source_prefix);
+                    }
+                }
             }
-
-            let manifest_json = String::from_utf8_lossy(&output.stdout);
-            let manifest: serde_json::Value = serde_json::from_str(&manifest_json).context("failed to parse git-cas manifest")?;
-            
-            let content_hash = manifest["hash"].as_str().or_else(|| manifest["oid"].as_str()).unwrap_or("unknown").to_string();
-            let file_size = std::fs::metadata(path)?.len();
-
-            let session_id = if file_name.starts_with("session-") {
-                file_name.strip_prefix("session-").and_then(|s| s.strip_suffix(".json"))
-            } else if file_name.starts_with("rollout-") {
-                file_name.strip_prefix("rollout-").and_then(|s| {
-                    let s = s.strip_suffix(".jsonl").unwrap_or(s);
-                    if s.len() >= 36 { Some(&s[s.len()-36..]) } else { None }
-                })
-            } else { None };
-
-            if let Some(sid) = session_id {
-                db_ops::record_backup(conn, sid, &path.to_string_lossy(), &content_hash, file_size)?;
-            }
+            anyhow::bail!("git cas store failed after {} attempts: {}", max_attempts, last_err);
         }
         BackupMode::Simple => {
             let content = std::fs::read(path)?;
