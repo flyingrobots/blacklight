@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **Regression Tests:** Added scanner tests for Codex and Claude Desktop root-path classification and search tests for project-filtered FTS behavior.
+- **LLM Token Use Report:** Added `LLM_TOKEN_USE.md`, an empirical long-form analysis of agentic coding token/context costs based on indexed Blacklight session data.
 
 ### Changed
 - **README Accuracy:** Updated CLI docs to clarify that `search`/`stats` are currently dashboard-only and corrected theme count to include Quartz.
