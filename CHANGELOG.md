@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **README Accuracy:** Updated CLI docs to clarify that `search`/`stats` are currently dashboard-only and corrected theme count to include Quartz.
+- **README Rewrite:** Rebuilt `README.md` from scratch with implementation-verified setup, architecture, API surface, configuration behavior, and known limitations.
 - **Roadmap Refresh:** Replaced the legacy milestone checklist roadmap with a living roadmap + product plan focused on trust, retrieval speed, privacy controls, and decision support outcomes.
 
 ## [0.3.0] - 2026-02-18
