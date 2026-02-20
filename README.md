@@ -86,8 +86,7 @@ blacklight enrich                   # AI-enrich unenriched sessions
 blacklight enrich --limit 50        # enrich up to 50 sessions
 blacklight enrich --concurrency 3   # 3 concurrent API calls
 blacklight enrich --force           # re-enrich already enriched sessions
-blacklight search "auth bug"        # full-text search from terminal
-blacklight stats                    # usage overview
+# NOTE: CLI search/stats are currently dashboard-only (/search and /analytics pages)
 ```
 
 Global options: `--db <path>`, `--claude-dir <path>`, `--config <path>` (defaults to `~/.blacklight/blacklight.toml`).
@@ -160,7 +159,7 @@ The **IndexerHUD** (bottom-right widget) lets you control indexing and enrichmen
 
 Real-time **WebSocket notifications** push status updates to the browser as indexing and enrichment progress.
 
-**Three color themes** — Slate (purple/violet), Indigo (deep blue/teal), and Orchid (pink/magenta). Switch via the dots next to the search bar. Choice persists in localStorage.
+**Four color themes** — Slate (purple/violet), Indigo (deep blue/teal), Orchid (pink/magenta), and Quartz (light mode). Switch via the dots next to the search bar. Choice persists in localStorage.
 
 ## AI Enrichment
 

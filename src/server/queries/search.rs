@@ -7,11 +7,11 @@ pub fn search_content(
     conn: &Connection,
     query: &str,
     kind: Option<&str>,
-    _project: Option<&str>,
+    project: Option<&str>,
     limit: i64,
     offset: i64,
 ) -> Result<Paginated<SearchHit>> {
-    // Sanitize query: wrap in double quotes and escape internal quotes to prevent 
+    // Sanitize query: wrap in double quotes and escape internal quotes to prevent
     // FTS5 from interpreting special characters (like :) as column filters or operators.
     let escaped_query = query.replace('\"', "\"\"");
     let quoted_query = format!("\"{}\"", escaped_query);
@@ -23,11 +23,20 @@ pub fn search_content(
         quoted_query
     };
 
-    // Count total matches
+    // Count total matches (including optional project filter).
     let total: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM fts_content WHERE fts_content MATCH ?1",
-            params![match_expr],
+            "SELECT COUNT(*)
+             FROM (
+                SELECT 1
+                FROM fts_content f
+                LEFT JOIN blob_references br ON br.hash = f.hash
+                LEFT JOIN messages m ON m.id = br.message_id
+                LEFT JOIN sessions s ON s.id = m.session_id
+                WHERE fts_content MATCH ?1
+                  AND (?2 IS NULL OR s.project_slug = ?2)
+             )",
+            params![&match_expr, project],
             |row| row.get(0),
         )
         .unwrap_or(0);
@@ -46,12 +55,13 @@ pub fn search_content(
          LEFT JOIN messages m ON m.id = br.message_id
          LEFT JOIN sessions s ON s.id = m.session_id
          WHERE fts_content MATCH ?1
+           AND (?4 IS NULL OR s.project_slug = ?4)
          ORDER BY rank
          LIMIT ?2 OFFSET ?3",
     )?;
 
     let items = stmt
-        .query_map(params![match_expr, limit, offset], |row| {
+        .query_map(params![&match_expr, limit, offset, project], |row| {
             Ok(SearchHit {
                 hash: row.get(0)?,
                 kind: row.get(1)?,

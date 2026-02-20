@@ -15,7 +15,11 @@ pub fn discover_extra_sources() -> Vec<(String, PathBuf, crate::config::SourceKi
             if agent_sessions.exists() {
                 if let Ok(entries) = find_nested_claude_dirs(&agent_sessions) {
                     for path in entries {
-                        extras.push(("claude-desktop-agent".to_string(), path, crate::config::SourceKind::Claude));
+                        extras.push((
+                            "claude-desktop-agent".to_string(),
+                            path,
+                            crate::config::SourceKind::Claude,
+                        ));
                     }
                 }
             }
@@ -25,20 +29,32 @@ pub fn discover_extra_sources() -> Vec<(String, PathBuf, crate::config::SourceKi
             if code_sessions.exists() {
                 // These are often nested deeply, but they contain JSON files we can index.
                 // We'll add the root and let the scanner find them.
-                extras.push(("claude-desktop-code".to_string(), code_sessions, crate::config::SourceKind::Claude));
+                extras.push((
+                    "claude-desktop-code".to_string(),
+                    code_sessions,
+                    crate::config::SourceKind::Claude,
+                ));
             }
         }
 
         // 2. Gemini: ~/.gemini/
         let gemini_dir = home.join(".gemini");
         if gemini_dir.exists() {
-            extras.push(("gemini".to_string(), gemini_dir, crate::config::SourceKind::Gemini));
+            extras.push((
+                "gemini".to_string(),
+                gemini_dir,
+                crate::config::SourceKind::Gemini,
+            ));
         }
 
         // 3. Codex: ~/.codex/
         let codex_dir = home.join(".codex");
         if codex_dir.exists() {
-            extras.push(("codex".to_string(), codex_dir, crate::config::SourceKind::Codex));
+            extras.push((
+                "codex".to_string(),
+                codex_dir,
+                crate::config::SourceKind::Codex,
+            ));
         }
     }
 
@@ -77,18 +93,18 @@ fn find_claude_dirs_recursive(dir: &Path, depth: u32, max_depth: u32, results: &
 /// Classification of files found under ~/.claude/ or ~/.gemini/
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FileKind {
-    SessionIndex,   // projects/**/sessions-index.json
-    SessionJsonl,   // projects/**/*.jsonl
-    TaskJson,       // tasks/**/*.json (not .lock/.highwatermark)
-    TodoJson,       // todos/**/*.json
-    FacetJson,      // usage-data/facets/**/*.json
-    StatsCache,     // stats-cache.json
-    HistoryJsonl,   // history.jsonl
-    PlanMarkdown,   // plans/**/*.md
-    ToolResultTxt,  // projects/**/tool-results/toolu_*.txt
-    GeminiSessionJson, // tmp/**/chats/session-*.json
+    SessionIndex,              // projects/**/sessions-index.json
+    SessionJsonl,              // projects/**/*.jsonl
+    TaskJson,                  // tasks/**/*.json (not .lock/.highwatermark)
+    TodoJson,                  // todos/**/*.json
+    FacetJson,                 // usage-data/facets/**/*.json
+    StatsCache,                // stats-cache.json
+    HistoryJsonl,              // history.jsonl
+    PlanMarkdown,              // plans/**/*.md
+    ToolResultTxt,             // projects/**/tool-results/toolu_*.txt
+    GeminiSessionJson,         // tmp/**/chats/session-*.json
     ClaudeDesktopSessionIndex, // claude-code-sessions/**/local_*.json
-    CodexSessionJsonl, // sessions/**/rollout-*.jsonl
+    CodexSessionJsonl,         // sessions/**/rollout-*.jsonl
 }
 
 impl std::fmt::Display for FileKind {
@@ -163,7 +179,12 @@ pub fn scan_with_skip_dirs(root: &Path, skip_dirs: &[String]) -> Result<Vec<File
     Ok(entries)
 }
 
-fn walk_dir(root: &Path, dir: &Path, skip_dirs: &[String], entries: &mut Vec<FileEntry>) -> Result<()> {
+fn walk_dir(
+    root: &Path,
+    dir: &Path,
+    skip_dirs: &[String],
+    entries: &mut Vec<FileEntry>,
+) -> Result<()> {
     let read_dir = match fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
@@ -171,17 +192,16 @@ fn walk_dir(root: &Path, dir: &Path, skip_dirs: &[String], entries: &mut Vec<Fil
             return Ok(());
         }
         Err(e) => {
-            return Err(e)
-                .with_context(|| format!("failed to read directory {}", dir.display()));
+            return Err(e).with_context(|| format!("failed to read directory {}", dir.display()));
         }
     };
 
     for entry in read_dir {
         let entry = entry.with_context(|| format!("failed to read entry in {}", dir.display()))?;
         let path = entry.path();
-        let file_type = entry.file_type().with_context(|| {
-            format!("failed to get file type for {}", path.display())
-        })?;
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("failed to get file type for {}", path.display()))?;
 
         if file_type.is_dir() {
             let dir_name = entry.file_name();
@@ -209,9 +229,9 @@ fn walk_dir(root: &Path, dir: &Path, skip_dirs: &[String], entries: &mut Vec<Fil
             }
 
             if let Some(kind) = classify(root, &path, &file_name_str) {
-                let metadata = entry.metadata().with_context(|| {
-                    format!("failed to get metadata for {}", path.display())
-                })?;
+                let metadata = entry
+                    .metadata()
+                    .with_context(|| format!("failed to get metadata for {}", path.display()))?;
                 let mtime_ms = metadata
                     .modified()
                     .ok()
@@ -237,6 +257,10 @@ fn walk_dir(root: &Path, dir: &Path, skip_dirs: &[String], entries: &mut Vec<Fil
 fn classify(root: &Path, path: &Path, file_name: &str) -> Option<FileKind> {
     let rel = path.strip_prefix(root).ok()?;
     let rel_str = rel.to_string_lossy();
+    let root_name = root
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
 
     // stats-cache.json at root
     if file_name == "stats-cache.json" {
@@ -256,7 +280,10 @@ fn classify(root: &Path, path: &Path, file_name: &str) -> Option<FileKind> {
         if file_name.ends_with(".jsonl") {
             return Some(FileKind::SessionJsonl);
         }
-        if rel_str.contains("tool-results/") && file_name.starts_with("toolu_") && file_name.ends_with(".txt") {
+        if rel_str.contains("tool-results/")
+            && file_name.starts_with("toolu_")
+            && file_name.ends_with(".txt")
+        {
             return Some(FileKind::ToolResultTxt);
         }
         return None;
@@ -294,17 +321,36 @@ fn classify(root: &Path, path: &Path, file_name: &str) -> Option<FileKind> {
     }
 
     // Gemini: tmp/**/chats/session-*.json
-    if (rel_str.contains("/chats/") || rel_str.contains("\\chats\\")) && file_name.ends_with(".json") && file_name.starts_with("session-") {
+    if (rel_str.contains("/chats/")
+        || rel_str.contains("\\chats\\")
+        || rel_str.starts_with("chats/")
+        || rel_str.starts_with("chats\\"))
+        && file_name.ends_with(".json")
+        && file_name.starts_with("session-")
+    {
         return Some(FileKind::GeminiSessionJson);
     }
 
     // Claude Desktop Code Sessions: claude-code-sessions/**/local_*.json
-    if (rel_str.contains("/claude-code-sessions/") || rel_str.contains("\\claude-code-sessions\\")) && file_name.ends_with(".json") && file_name.starts_with("local_") {
+    if file_name.ends_with(".json")
+        && file_name.starts_with("local_")
+        && (root_name == "claude-code-sessions"
+            || rel_str.contains("/claude-code-sessions/")
+            || rel_str.contains("\\claude-code-sessions\\")
+            || rel_str.starts_with("claude-code-sessions/")
+            || rel_str.starts_with("claude-code-sessions\\"))
+    {
         return Some(FileKind::ClaudeDesktopSessionIndex);
     }
 
     // Codex: sessions/**/rollout-*.jsonl
-    if (rel_str.contains("/sessions/") || rel_str.contains("\\sessions\\")) && file_name.ends_with(".jsonl") && file_name.starts_with("rollout-") {
+    if (rel_str.contains("/sessions/")
+        || rel_str.contains("\\sessions\\")
+        || rel_str.starts_with("sessions/")
+        || rel_str.starts_with("sessions\\"))
+        && file_name.ends_with(".jsonl")
+        && file_name.starts_with("rollout-")
+    {
         return Some(FileKind::CodexSessionJsonl);
     }
 
@@ -383,5 +429,33 @@ mod tests {
         assert_eq!(entries[0].kind, FileKind::SessionIndex);
         // SessionJsonl entries should be sorted by path
         assert!(entries[1].path < entries[2].path);
+    }
+
+    #[test]
+    fn test_scan_classifies_codex_sessions_from_root_sessions_dir() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+
+        create_file(
+            root,
+            "sessions/2026/rollout-12345678-1234-1234-1234-123456789abc.jsonl",
+        );
+
+        let entries = scan(root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, FileKind::CodexSessionJsonl);
+    }
+
+    #[test]
+    fn test_scan_classifies_desktop_local_indexes_from_code_sessions_root() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("claude-code-sessions");
+        fs::create_dir_all(&root).unwrap();
+
+        create_file(&root, "2026/02/local_abc123.json");
+
+        let entries = scan(&root).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, FileKind::ClaudeDesktopSessionIndex);
     }
 }

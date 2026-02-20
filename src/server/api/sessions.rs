@@ -100,24 +100,25 @@ async fn get_raw(
     let backup_info = state
         .db
         .call(move |conn| {
-            let row: Option<(String, String)> = conn
+            let row: Option<String> = conn
                 .query_row(
-                    "SELECT content_hash, source_name FROM session_backups WHERE session_id = ?1",
+                    "SELECT content_hash FROM session_backups WHERE session_id = ?1",
                     rusqlite::params![id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| row.get(0),
                 )
                 .ok();
             Ok(row)
         })
         .await?;
 
-    let (hash, _source_name) = backup_info.ok_or_else(|| AppError::not_found("session not backed up in CAS"))?;
+    let hash = backup_info.ok_or_else(|| AppError::not_found("session not backed up in CAS"))?;
     let backup_dir = state.config.resolved_backup_dir();
-    
+
     match state.config.backup_mode {
         crate::config::BackupMode::Simple => {
             let path = backup_dir.join(&hash);
-            let content = tokio::fs::read_to_string(path).await
+            let content = tokio::fs::read_to_string(path)
+                .await
                 .map_err(|e| AppError::internal(format!("failed to read CAS backup: {e}")))?;
             Ok((
                 [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
@@ -126,17 +127,22 @@ async fn get_raw(
         }
         crate::config::BackupMode::GitCas => {
             // Snappy materialized cache check
-            let materialized_dir = state.config.resolved_db_path().parent()
+            let materialized_dir = state
+                .config
+                .resolved_db_path()
+                .parent()
                 .ok_or_else(|| AppError::internal("no db parent"))?
                 .join("materialized");
             if !materialized_dir.exists() {
-                std::fs::create_dir_all(&materialized_dir).map_err(|e| AppError::internal(format!("failed to create cache: {e}")))?;
+                std::fs::create_dir_all(&materialized_dir)
+                    .map_err(|e| AppError::internal(format!("failed to create cache: {e}")))?;
             }
-            
+
             let cache_path = materialized_dir.join(&hash);
             if cache_path.exists() {
-                let content = tokio::fs::read_to_string(cache_path).await
-                    .map_err(|e| AppError::internal(format!("failed to read materialized cache: {e}")))?;
+                let content = tokio::fs::read_to_string(cache_path).await.map_err(|e| {
+                    AppError::internal(format!("failed to read materialized cache: {e}"))
+                })?;
                 return Ok((
                     [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
                     content,
@@ -145,7 +151,14 @@ async fn get_raw(
 
             // Not in cache, restore from git-cas
             let output = tokio::process::Command::new("git")
-                .args(["cas", "restore", "--oid", &hash, "--out", cache_path.to_string_lossy().as_ref()])
+                .args([
+                    "cas",
+                    "restore",
+                    "--oid",
+                    &hash,
+                    "--out",
+                    cache_path.to_string_lossy().as_ref(),
+                ])
                 .current_dir(&backup_dir)
                 .output()
                 .await
@@ -156,9 +169,10 @@ async fn get_raw(
                 return Err(AppError::internal(format!("git cas restore failed: {err}")));
             }
 
-            let content = tokio::fs::read_to_string(cache_path).await
+            let content = tokio::fs::read_to_string(cache_path)
+                .await
                 .map_err(|e| AppError::internal(format!("failed to read restored file: {e}")))?;
-            
+
             Ok((
                 [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
                 content,

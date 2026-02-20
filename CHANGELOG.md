@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Raw Session Retrieval:** Fixed `/api/sessions/{id}/raw` to query `session_backups` using the actual schema (`content_hash`), preventing false "not backed up" responses.
+- **Project-Scoped Search:** Search queries now correctly apply the optional `project` filter in backend FTS queries.
+- **Source Scanner Classification:** Restored detection of Codex `sessions/**/rollout-*.jsonl` files and Claude Desktop `local_*.json` session indexes when scanning source roots like `~/.codex` and `.../claude-code-sessions`.
+- **API Exposure Hardening:** Removed wildcard CORS policy from the embedded backend to avoid unnecessary cross-origin API access.
+
+### Added
+- **Regression Tests:** Added scanner tests for Codex and Claude Desktop root-path classification and search tests for project-filtered FTS behavior.
+
+### Changed
+- **README Accuracy:** Updated CLI docs to clarify that `search`/`stats` are currently dashboard-only and corrected theme count to include Quartz.
+
 ## [0.3.0] - 2026-02-18
 
 ### Added
