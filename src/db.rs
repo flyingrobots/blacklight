@@ -51,7 +51,7 @@ pub fn open_with_config(path: &Path, sqlite_config: &SqliteConfig) -> Result<Con
          PRAGMA foreign_keys = ON;
          PRAGMA cache_size = -{cache_size_kb};
          PRAGMA mmap_size = {mmap_size};
-         PRAGMA busy_timeout = 5000;"
+         PRAGMA busy_timeout = 30000;"
     );
 
     conn.execute_batch(&pragmas)

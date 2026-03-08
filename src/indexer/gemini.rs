@@ -260,58 +260,59 @@ pub async fn run_v4_migration(
         Ok(rows)
     }).await?;
 
+    let total = sessions.len();
     {
         let guard = state.lock().await;
         let mut p = guard.progress.lock().unwrap();
-        p.total_sessions = sessions.len();
+        p.total_sessions = total;
     }
 
-    // 2. Iterate and process
-    for (id, source_file, kind) in sessions {
-        let path = PathBuf::from(&source_file);
+    // 2. Iterate and process in batches
+    let batch_size = 50;
+    for chunk in sessions.chunks(batch_size) {
+        let db_inner = db.clone();
+        let chunk_vec = chunk.to_vec();
+        let backup_dir_inner = backup_dir.clone();
         
-        // Backup if it exists and we haven't already
-        if path.exists() {
-            let db_inner = db.clone();
-            let id_inner = id.clone();
-            let path_inner = path.clone();
-            let backup_dir_inner = backup_dir.clone();
-            
-            db_inner.call(move |conn| {
-                // Check if already backed up
-                let exists: bool = conn.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM session_backups WHERE session_id = ?1)",
-                    rusqlite::params![id_inner],
-                    |row| row.get(0)
-                )?;
+        db_inner.call(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            for (id, source_file, kind) in chunk_vec {
+                let path = PathBuf::from(&source_file);
+                
+                // Backup if it exists and we haven't already
+                if path.exists() {
+                    // Check if already backed up
+                    let exists: bool = tx.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM session_backups WHERE session_id = ?1)",
+                        rusqlite::params![id],
+                        |row| row.get(0)
+                    )?;
 
-                if !exists {
-                    if kind.as_deref() == Some("gemini") || kind.as_deref() == Some("codex") || source_file.contains(".gemini") || source_file.contains(".codex") {
-                         let source_name = kind.as_deref().unwrap_or("unknown");
-                         crate::indexer::backup_source_file(conn, &path_inner, &backup_dir_inner, backup_mode, source_name)?;
+                    if !exists {
+                        if kind.as_deref() == Some("gemini") || kind.as_deref() == Some("codex") || source_file.contains(".gemini") || source_file.contains(".codex") {
+                             let source_name = kind.as_deref().unwrap_or("unknown");
+                             crate::indexer::backup_source_file(&tx, &path, &backup_dir_inner, backup_mode, source_name)?;
+                        }
                     }
                 }
-                Ok(())
-            }).await?;
 
-            let guard = state.lock().await;
-            let mut p = guard.progress.lock().unwrap();
-            p.backed_up += 1;
-        }
-
-        // Always update fingerprint (Merkle root)
-        let db_inner = db.clone();
-        let id_inner = id.clone();
-        db_inner.call(move |conn| {
-            db_ops::update_session_fingerprint(conn, &id_inner)?;
+                // Always update fingerprint (Merkle root)
+                db_ops::update_session_fingerprint(&tx, &id)?;
+            }
+            tx.commit()?;
             Ok(())
         }).await?;
 
+        // Update progress
         {
             let guard = state.lock().await;
             let mut p = guard.progress.lock().unwrap();
-            p.fingerprints_updated += 1;
+            p.backed_up = std::cmp::min(p.backed_up + batch_size, total);
+            p.fingerprints_updated = std::cmp::min(p.fingerprints_updated + batch_size, total);
         }
+
+        // Yield to let other writers in
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
     Ok(())
