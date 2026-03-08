@@ -80,6 +80,12 @@ enum Commands {
         json: bool,
     },
 
+    /// Open a session in the web dashboard
+    Open {
+        /// Session ID
+        id: String,
+    },
+
     /// Generate AI titles, summaries, and tags for sessions using Claude
     Enrich {
         /// Max sessions to enrich
@@ -135,24 +141,27 @@ fn main() {
         )
         .init();
 
-    match cli.command {
+    match &cli.command {
         Commands::Init => {
             run_init();
         }
-        Commands::Index { full, ref source, verbose } => {
-            run_index(&cli, &cfg, full, source.clone(), verbose);
+        Commands::Index { full, source, verbose } => {
+            run_index(&cli, &cfg, *full, source.clone(), *verbose);
         }
         Commands::Serve { port, no_open } => {
-            run_serve(&cli, &cfg, port, no_open);
+            run_serve(&cli, &cfg, *port, *no_open);
         }
         Commands::Enrich { limit, concurrency, force } => {
-            run_enrich(&cli, &cfg, limit, concurrency, force);
+            run_enrich(&cli, &cfg, *limit, *concurrency, *force);
         }
-        Commands::Search { .. } => {
-            eprintln!("blacklight search: not yet implemented");
+        Commands::Search { query, project, kind, limit, from, to, json } => {
+            run_search(&cli, &cfg, query.clone(), project.clone(), kind.clone(), *limit, from.clone(), to.clone(), *json);
         }
-        Commands::Stats { .. } => {
-            eprintln!("blacklight stats: not yet implemented");
+        Commands::Open { id } => {
+            run_open(&cli, &cfg, id.clone());
+        }
+        Commands::Stats { daily, models, projects } => {
+            run_stats(&cli, &cfg, *daily, *models, *projects);
         }
     }
 }
@@ -292,4 +301,176 @@ fn run_enrich(
             }
         }
     });
+}
+
+fn run_search(
+    cli: &Cli,
+    cfg: &BlacklightConfig,
+    query: String,
+    project: Option<String>,
+    kind: Option<String>,
+    limit: u32,
+    _from: Option<String>,
+    _to: Option<String>,
+    json: bool,
+) {
+    let db_path = resolve_db_path(cli, cfg);
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        let pool = match server::state::DbPool::new(&db_path, 1) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("failed to open database: {e:#}");
+                std::process::exit(1);
+            }
+        };
+
+        match pool.call(move |conn| {
+            server::queries::search::search_content(
+                conn,
+                &query,
+                kind.as_deref(),
+                project.as_deref(),
+                limit as i64,
+                0,
+            )
+        }).await {
+            Ok(results) => {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&results).unwrap());
+                } else {
+                    println!("Found {} results:", results.total);
+                    for hit in results.items {
+                        println!("\n--- Result (rank: {:.4}) ---", hit.rank);
+                        println!("Session: {}", hit.session_id.as_deref().unwrap_or("unknown"));
+                        if let Some(summary) = hit.session_summary {
+                            println!("Summary: {}", summary);
+                        }
+                        println!("Kind:    {}", hit.kind);
+                        println!("Snippet: {}", hit.snippet.replace("<mark>", "\x1b[1;33m").replace("</mark>", "\x1b[0m"));
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("search failed: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    });
+}
+
+fn run_open(
+    _cli: &Cli,
+    cfg: &BlacklightConfig,
+    id: String,
+) {
+    let port = cfg.server.port;
+    let url = format!("http://localhost:{}/sessions/{}", port, id);
+    if let Err(e) = open::that(&url) {
+        eprintln!("failed to open browser: {e}");
+        println!("Session URL: {url}");
+    } else {
+        println!("Opened session in browser: {url}");
+    }
+}
+
+fn run_stats(
+    cli: &Cli,
+    cfg: &BlacklightConfig,
+    daily: bool,
+    models: bool,
+    projects: bool,
+) {
+    let db_path = resolve_db_path(cli, cfg);
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        let pool = match server::state::DbPool::new(&db_path, 1) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("failed to open database: {e:#}");
+                std::process::exit(1);
+            }
+        };
+
+        let db_path_str = db_path.to_string_lossy().to_string();
+        
+        if daily {
+            match pool.call(move |conn| server::queries::analytics::get_daily_stats(conn, None, None)).await {
+                Ok(stats) => {
+                    println!("Daily Statistics:");
+                    println!("{:<12} {:<10} {:<10} {:<10}", "Date", "Sessions", "Messages", "Tools");
+                    for day in stats {
+                        println!("{:<12} {:<10} {:<10} {:<10}", 
+                            day.date, 
+                            day.session_count.unwrap_or(0), 
+                            day.message_count.unwrap_or(0), 
+                            day.tool_call_count.unwrap_or(0)
+                        );
+                    }
+                }
+                Err(e) => eprintln!("failed to get daily stats: {e:#}"),
+            }
+        } else if models {
+            match pool.call(move |conn| server::queries::analytics::get_model_usage(conn)).await {
+                Ok(stats) => {
+                    println!("Model Usage:");
+                    println!("{:<30} {:<12} {:<12}", "Model", "In Tokens", "Out Tokens");
+                    for m in stats {
+                        println!("{:<30} {:<12} {:<12}", 
+                            m.model, 
+                            m.input_tokens.unwrap_or(0), 
+                            m.output_tokens.unwrap_or(0)
+                        );
+                    }
+                }
+                Err(e) => eprintln!("failed to get model stats: {e:#}"),
+            }
+        } else if projects {
+            match pool.call(move |conn| server::queries::analytics::get_project_breakdown(conn, None, None)).await {
+                Ok(stats) => {
+                    println!("Project Breakdown:");
+                    println!("{:<20} {:<10} {:<10} {:<10}", "Project", "Sessions", "Messages", "Tools");
+                    for p in stats {
+                        println!("{:<20} {:<10} {:<10} {:<10}", 
+                            p.project_slug, 
+                            p.session_count, 
+                            p.message_count, 
+                            p.tool_call_count
+                        );
+                    }
+                }
+                Err(e) => eprintln!("failed to get project breakdown: {e:#}"),
+            }
+        } else {
+            // Default: Overview
+            match pool.call(move |conn| server::queries::analytics::get_overview(conn, &db_path_str)).await {
+                Ok(o) => {
+                    println!("Blacklight Overview:");
+                    println!("  Sessions:       {}", o.total_sessions);
+                    println!("  Messages:       {}", o.total_messages);
+                    println!("  Blobs:          {} ({})", o.total_blobs, format_size(o.total_blob_bytes));
+                    println!("  Database Size:  {}", format_size(o.db_size_bytes));
+                    if let Some(first) = o.first_session { println!("  First Session:  {}", first); }
+                    if let Some(last) = o.last_session { println!("  Last Session:   {}", last); }
+                }
+                Err(e) => eprintln!("failed to get overview: {e:#}"),
+            }
+        }
+    });
+}
+
+fn format_size(bytes: i64) -> String {
+    const KB: i64 = 1024;
+    const MB: i64 = KB * 1024;
+    const GB: i64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
 }
