@@ -179,7 +179,7 @@ async fn run_scheduled_enrichment(state: &AppState, concurrency: i32) {
             // Check for pending reviews
             if let Ok(pending) = state
                 .db
-                .call(crate::enrich::pending_review_count)
+                .call(|conn| crate::enrich::pending_review_count(conn))
                 .await
             {
                 if pending > 0 {

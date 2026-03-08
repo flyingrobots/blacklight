@@ -13,9 +13,9 @@ use super::scanner::FileEntry;
 
 /// Parse task JSON files and populate the tasks + task_dependencies tables.
 /// session_id is derived from the parent directory name (a UUID).
-pub fn parse_tasks(conn: &Connection, files: &[FileEntry]) -> Result<usize> {
+pub fn parse_tasks(conn: &mut Connection, files: &[FileEntry]) -> Result<usize> {
     let mut count = 0;
-    let tx = conn.unchecked_transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
     {
         let mut task_stmt = tx.prepare_cached(
@@ -78,9 +78,9 @@ pub fn parse_tasks(conn: &Connection, files: &[FileEntry]) -> Result<usize> {
 // ---------------------------------------------------------------------------
 
 /// Parse facet JSON files and populate session_outcomes, outcome_categories, outcome_friction.
-pub fn parse_facets(conn: &Connection, files: &[FileEntry]) -> Result<usize> {
+pub fn parse_facets(conn: &mut Connection, files: &[FileEntry]) -> Result<usize> {
     let mut count = 0;
-    let tx = conn.unchecked_transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
     {
         let mut outcome_stmt = tx.prepare_cached(
@@ -162,14 +162,14 @@ pub fn parse_facets(conn: &Connection, files: &[FileEntry]) -> Result<usize> {
 // ---------------------------------------------------------------------------
 
 /// Parse stats-cache.json and populate daily_stats + model_usage tables.
-pub fn parse_stats_cache(conn: &Connection, path: &Path) -> Result<()> {
+pub fn parse_stats_cache(conn: &mut Connection, path: &Path) -> Result<()> {
     let data = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
 
     let stats: StatsCache = serde_json::from_str(&data)
         .with_context(|| format!("failed to parse {}", path.display()))?;
 
-    let tx = conn.unchecked_transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
     {
         let mut daily_stmt = tx.prepare_cached(
@@ -216,9 +216,9 @@ pub fn parse_stats_cache(conn: &Connection, path: &Path) -> Result<()> {
 // ---------------------------------------------------------------------------
 
 /// Parse plan markdown files into content_store + FTS.
-pub fn parse_plans(conn: &Connection, files: &[FileEntry]) -> Result<usize> {
+pub fn parse_plans(conn: &mut Connection, files: &[FileEntry]) -> Result<usize> {
     let mut count = 0;
-    let tx = conn.unchecked_transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
     {
         let mut blob_stmt = tx.prepare_cached(
@@ -266,12 +266,12 @@ pub fn parse_plans(conn: &Connection, files: &[FileEntry]) -> Result<usize> {
 // ---------------------------------------------------------------------------
 
 /// Parse history.jsonl and index each prompt in content_store + FTS.
-pub fn parse_history(conn: &Connection, path: &Path) -> Result<usize> {
+pub fn parse_history(conn: &mut Connection, path: &Path) -> Result<usize> {
     let data = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
 
     let mut count = 0;
-    let tx = conn.unchecked_transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
 
     {
         let mut blob_stmt = tx.prepare_cached(
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn test_parse_tasks() {
         let tmp = TempDir::new().unwrap();
-        let conn = db::open(&tmp.path().join("test.db")).unwrap();
+        let mut conn = db::open(&tmp.path().join("test.db")).unwrap();
 
         // Create task file: tasks/<session_id>/task.json
         let task_dir = tmp.path().join("tasks").join("sess-001");
@@ -358,7 +358,7 @@ mod tests {
         ).unwrap();
 
         let entries = vec![make_entry(task_path, FileKind::TaskJson)];
-        let count = parse_tasks(&conn, &entries).unwrap();
+        let count = parse_tasks(&mut conn, &entries).unwrap();
         assert_eq!(count, 1);
 
         let subject: String = conn
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn test_parse_facets() {
         let tmp = TempDir::new().unwrap();
-        let conn = db::open(&tmp.path().join("test.db")).unwrap();
+        let mut conn = db::open(&tmp.path().join("test.db")).unwrap();
 
         let facet_path = tmp.path().join("facet.json");
         let mut f = std::fs::File::create(&facet_path).unwrap();
@@ -399,7 +399,7 @@ mod tests {
         ).unwrap();
 
         let entries = vec![make_entry(facet_path, FileKind::FacetJson)];
-        let count = parse_facets(&conn, &entries).unwrap();
+        let count = parse_facets(&mut conn, &entries).unwrap();
         assert_eq!(count, 1);
 
         let goal: String = conn
@@ -415,7 +415,7 @@ mod tests {
     #[test]
     fn test_parse_stats_cache() {
         let tmp = TempDir::new().unwrap();
-        let conn = db::open(&tmp.path().join("test.db")).unwrap();
+        let mut conn = db::open(&tmp.path().join("test.db")).unwrap();
 
         let stats_path = tmp.path().join("stats-cache.json");
         let mut f = std::fs::File::create(&stats_path).unwrap();
@@ -432,7 +432,7 @@ mod tests {
             }}"#
         ).unwrap();
 
-        parse_stats_cache(&conn, &stats_path).unwrap();
+        parse_stats_cache(&mut conn, &stats_path).unwrap();
 
         let msg_count: i64 = conn
             .query_row(
@@ -447,13 +447,13 @@ mod tests {
     #[test]
     fn test_parse_plans() {
         let tmp = TempDir::new().unwrap();
-        let conn = db::open(&tmp.path().join("test.db")).unwrap();
+        let mut conn = db::open(&tmp.path().join("test.db")).unwrap();
 
         let plan_path = tmp.path().join("plan.md");
         std::fs::write(&plan_path, "# My Plan\n\nDo some stuff.").unwrap();
 
         let entries = vec![make_entry(plan_path, FileKind::PlanMarkdown)];
-        let count = parse_plans(&conn, &entries).unwrap();
+        let count = parse_plans(&mut conn, &entries).unwrap();
         assert_eq!(count, 1);
 
         let kind: String = conn
@@ -469,14 +469,14 @@ mod tests {
     #[test]
     fn test_parse_history() {
         let tmp = TempDir::new().unwrap();
-        let conn = db::open(&tmp.path().join("test.db")).unwrap();
+        let mut conn = db::open(&tmp.path().join("test.db")).unwrap();
 
         let history_path = tmp.path().join("history.jsonl");
         let mut f = std::fs::File::create(&history_path).unwrap();
         writeln!(f, r#"{{"display":"fix the bug","timestamp":1704067200000}}"#).unwrap();
         writeln!(f, r#"{{"display":"add feature","timestamp":1704067201000}}"#).unwrap();
 
-        let count = parse_history(&conn, &history_path).unwrap();
+        let count = parse_history(&mut conn, &history_path).unwrap();
         assert_eq!(count, 2);
 
         let blob_count: i64 = conn

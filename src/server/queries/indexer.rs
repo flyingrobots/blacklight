@@ -4,7 +4,7 @@ use rusqlite::{params, Connection};
 use crate::server::responses::{IndexRun, Paginated};
 
 pub fn list_runs(
-    conn: &Connection,
+    conn: &mut Connection,
     limit: i64,
     offset: i64,
 ) -> Result<Paginated<IndexRun>> {

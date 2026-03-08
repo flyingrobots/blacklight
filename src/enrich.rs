@@ -522,7 +522,7 @@ fn store_enrichment_internal(
 }
 
 /// Count enrichments pending human review.
-pub fn pending_review_count(conn: &Connection) -> Result<i64> {
+pub fn pending_review_count(conn: &mut Connection) -> Result<i64> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM session_enrichments WHERE approval_status = 'pending_review'",
         [],

@@ -19,7 +19,7 @@ pub struct DesktopSessionIndex {
 }
 
 /// Parse a Claude Desktop local_*.json file and upsert it into the sessions table.
-pub fn parse_desktop_session_index(conn: &Connection, path: &Path) -> Result<usize> {
+pub fn parse_desktop_session_index(conn: &mut Connection, path: &Path) -> Result<usize> {
     let data = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
 
@@ -65,7 +65,7 @@ pub fn parse_desktop_session_index(conn: &Connection, path: &Path) -> Result<usi
 
 /// Parse a sessions-index.json file and upsert all entries into the sessions table.
 /// Returns the count of upserted sessions.
-pub fn parse_session_index(conn: &Connection, path: &Path) -> Result<usize> {
+pub fn parse_session_index(conn: &mut Connection, path: &Path) -> Result<usize> {
     let data = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
 
@@ -75,7 +75,7 @@ pub fn parse_session_index(conn: &Connection, path: &Path) -> Result<usize> {
     let source_file = path.to_string_lossy().to_string();
     let mut count = 0;
 
-    let tx = conn.unchecked_transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     {
         let mut stmt = tx.prepare_cached(
             "INSERT OR REPLACE INTO sessions
@@ -138,7 +138,7 @@ pub fn parse_session_index(conn: &Connection, path: &Path) -> Result<usize> {
 /// Ensure a session row exists. Creates a minimal row if it doesn't.
 /// Used for subagent files that may not have an entry in sessions-index.json.
 pub fn ensure_session(
-    conn: &Connection,
+    conn: &mut Connection,
     session_id: &str,
     source_file: &str,
     cwd: Option<&str>,
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn test_parse_session_index() {
         let tmp = TempDir::new().unwrap();
-        let conn = db::open(&tmp.path().join("test.db")).unwrap();
+        let mut conn = db::open(&tmp.path().join("test.db")).unwrap();
 
         let index_json = r#"{
             "version": 1,
@@ -214,7 +214,7 @@ mod tests {
         let mut f = std::fs::File::create(&index_path).unwrap();
         f.write_all(index_json.as_bytes()).unwrap();
 
-        let count = parse_session_index(&conn, &index_path).unwrap();
+        let count = parse_session_index(&mut conn, &index_path).unwrap();
         assert_eq!(count, 1);
 
         let slug: String = conn

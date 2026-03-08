@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::server::responses::{ContentBlockDetail, MessageDetail, Paginated};
 
 pub fn get_messages(
-    conn: &Connection,
+    conn: &mut Connection,
     session_id: &str,
     limit: i64,
     offset: i64,

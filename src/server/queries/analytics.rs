@@ -7,7 +7,7 @@ use crate::server::responses::{
     OutcomeBreakdown, ReasonStats,
 };
 
-pub fn get_overview(conn: &Connection, db_path: &str) -> Result<AnalyticsOverview> {
+pub fn get_overview(conn: &mut Connection, db_path: &str) -> Result<AnalyticsOverview> {
     let total_sessions: i64 =
         conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
     let total_messages: i64 =
@@ -56,7 +56,7 @@ pub fn get_overview(conn: &Connection, db_path: &str) -> Result<AnalyticsOvervie
 }
 
 pub fn get_daily_stats(
-    conn: &Connection,
+    conn: &mut Connection,
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<DailyStats>> {
@@ -107,7 +107,7 @@ fn map_daily_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DailyStats> {
     })
 }
 
-pub fn get_model_usage(conn: &Connection) -> Result<Vec<ModelUsage>> {
+pub fn get_model_usage(conn: &mut Connection) -> Result<Vec<ModelUsage>> {
     let mut stmt = conn.prepare(
         "SELECT model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
          FROM model_usage
@@ -130,7 +130,7 @@ pub fn get_model_usage(conn: &Connection) -> Result<Vec<ModelUsage>> {
 }
 
 pub fn get_tool_frequency(
-    conn: &Connection,
+    conn: &mut Connection,
     limit: i64,
     from: Option<&str>,
     to: Option<&str>,
@@ -178,7 +178,7 @@ pub fn get_tool_frequency(
 }
 
 pub fn get_project_breakdown(
-    conn: &Connection,
+    conn: &mut Connection,
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<ProjectBreakdown>> {
@@ -248,7 +248,7 @@ pub fn get_project_breakdown(
 }
 
 pub fn get_llm_breakdown(
-    conn: &Connection,
+    conn: &mut Connection,
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<LlmBreakdown>> {
@@ -318,7 +318,7 @@ pub fn get_llm_breakdown(
 }
 
 pub fn get_daily_project_breakdown(
-    conn: &Connection,
+    conn: &mut Connection,
     from: Option<&str>,
     to: Option<&str>,
 ) -> Result<Vec<DailyProjectStats>> {
@@ -363,7 +363,7 @@ pub fn get_daily_project_breakdown(
 }
 
 pub fn get_coverage(
-    conn: &Connection,
+    conn: &mut Connection,
     source_dirs: &[std::path::PathBuf],
 ) -> Result<IndexCoverage> {
     // Source file stats — scan all filesystem sources
@@ -476,7 +476,7 @@ pub fn get_coverage(
     })
 }
 
-pub fn get_outcome_distribution(conn: &Connection) -> Result<OutcomeBreakdown> {
+pub fn get_outcome_distribution(conn: &mut Connection) -> Result<OutcomeBreakdown> {
     let mut stmt = conn.prepare(
         "SELECT COALESCE(outcome, 'unknown') as outcome, COUNT(*) as cnt
          FROM session_outcomes

@@ -101,6 +101,17 @@ enum Commands {
         force: bool,
     },
 
+    /// Automatically classify session outcomes using a local LLM
+    Classify {
+        /// Max sessions to classify
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Re-classify already classified sessions
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Show usage statistics
     Stats {
         /// Show daily activity breakdown
@@ -153,6 +164,9 @@ fn main() {
         }
         Commands::Enrich { limit, concurrency, force } => {
             run_enrich(&cli, &cfg, *limit, *concurrency, *force);
+        }
+        Commands::Classify { limit, force } => {
+            run_classify(&cli, &cfg, *limit, *force);
         }
         Commands::Search { query, project, kind, limit, from, to, json } => {
             run_search(&cli, &cfg, query.clone(), project.clone(), kind.clone(), *limit, from.clone(), to.clone(), *json);
@@ -306,6 +320,43 @@ fn run_enrich(
             Ok(report) => print!("{report}"),
             Err(e) => {
                 eprintln!("enrichment failed: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    });
+}
+
+fn run_classify(
+    cli: &Cli,
+    cfg: &BlacklightConfig,
+    limit: Option<usize>,
+    force: bool,
+) {
+    let db_path = resolve_db_path(cli, cfg);
+    
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        match blacklight::classifier::run_classify(blacklight::classifier::ClassifierConfig {
+            db_path,
+            limit,
+            concurrency: cfg.enrichment.concurrency,
+            force,
+            ollama_url: cfg.enrichment.ollama_url.clone(),
+            ollama_model: cfg.enrichment.ollama_model.clone(),
+            google_api_key: cfg.enrichment.google_api_key.clone(),
+            preferred_backend: cfg.enrichment.preferred_backend.clone(),
+            progress: None,
+            cancel_flag: None,
+            log_lines: None,
+        }).await {
+            Ok(report) => {
+                println!("Classification complete:");
+                println!("  Classified: {}", report.classified);
+                println!("  Skipped:    {}", report.skipped);
+                println!("  Failed:     {}", report.failed);
+            }
+            Err(e) => {
+                eprintln!("classification failed: {e:#}");
                 std::process::exit(1);
             }
         }

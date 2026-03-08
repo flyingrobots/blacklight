@@ -90,7 +90,7 @@ pub struct GeminiThought {
 
 /// Process a Gemini session JSON file.
 pub fn process_gemini_session(
-    conn: &Connection,
+    conn: &mut Connection,
     path: &Path,
     source_name: &str,
 ) -> Result<()> {
@@ -275,7 +275,7 @@ pub async fn run_v4_migration(
         let backup_dir_inner = backup_dir.clone();
         
         db_inner.call(move |conn| {
-            let tx = conn.unchecked_transaction()?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             for (id, source_file, kind) in chunk_vec {
                 let path = PathBuf::from(&source_file);
                 

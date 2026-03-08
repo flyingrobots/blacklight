@@ -149,7 +149,7 @@ pub fn run_index(mut config: IndexConfig) -> Result<IndexReport> {
     let start = Instant::now();
     
     // 1. Open database
-    let conn = crate::db::open(&config.db_path)
+    let mut conn = crate::db::open(&config.db_path)
         .context("failed to open database")?;
 
     // 2. Start run record
@@ -161,7 +161,7 @@ pub fn run_index(mut config: IndexConfig) -> Result<IndexReport> {
         id
     };
 
-    let result = run_index_inner(&config, &conn);
+    let result = run_index_inner(&config, &mut conn);
 
     let mut report = match &result {
         Ok(r) => r.clone(),
@@ -193,7 +193,7 @@ pub fn run_index(mut config: IndexConfig) -> Result<IndexReport> {
     })
 }
 
-fn run_index_inner(config: &IndexConfig, conn: &rusqlite::Connection) -> Result<IndexReport> {
+fn run_index_inner(config: &IndexConfig, conn: &mut rusqlite::Connection) -> Result<IndexReport> {
     let mut report = IndexReport::default();
     let cancel_flag = config.cancel_flag.clone();
 
@@ -472,10 +472,24 @@ fn ensure_backup_repo(path: &Path) -> Result<()> {
     if !path.join(".git").exists() {
         tracing::info!("initializing backup git repo in {}", path.display());
         std::process::Command::new("git").arg("init").current_dir(path).output().context("failed to git init backup repo")?;
-        std::process::Command::new("git").args(["cas", "vault", "init"]).current_dir(path).output().context("failed to init git-cas vault")?;
+        
+        let git_cas_bin = get_git_cas_bin();
+        std::process::Command::new(&git_cas_bin).args(["vault", "init"]).current_dir(path).output().context("failed to init git-cas vault")?;
     }
 
     Ok(())
+}
+
+fn get_git_cas_bin() -> String {
+    // Check for local node_modules binary first
+    let local_bin = std::env::current_dir()
+        .unwrap_or_default()
+        .join("node_modules/.bin/git-cas");
+    if local_bin.exists() {
+        local_bin.to_string_lossy().to_string()
+    } else {
+        "git-cas".to_string() // Fallback to PATH
+    }
 }
 
 pub fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: &Path, mode: BackupMode, source_prefix: &str) -> Result<()> {
@@ -489,6 +503,7 @@ pub fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: 
     };
 
     let slug = format!("{}:{}", source_prefix, base_slug);
+    let git_cas_bin = get_git_cas_bin();
 
     match mode {
         BackupMode::GitCas => {
@@ -497,8 +512,17 @@ pub fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: 
             let mut last_err = String::new();
 
             while attempts < max_attempts {
-                let output_res = std::process::Command::new("git")
-                    .args(["cas", "store", &path.to_string_lossy(), "--slug", &slug, "--tree"])
+                let output_res = std::process::Command::new(&git_cas_bin)
+                    .args([
+                        "store", &path.to_string_lossy(),
+                        "--slug", &slug,
+                        "--tree",
+                        "--gzip",
+                        "--strategy", "cdc",
+                        "--codec", "cbor",
+                        "--concurrency", "4",
+                        "--json"
+                    ])
                     .current_dir(backup_dir)
                     .output();
 
@@ -507,7 +531,7 @@ pub fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: 
                         let manifest_json = String::from_utf8_lossy(&output.stdout);
                         let manifest: serde_json::Value = serde_json::from_str(&manifest_json).context("failed to parse git-cas manifest")?;
                         
-                        let content_hash = manifest["hash"].as_str().or_else(|| manifest["oid"].as_str()).unwrap_or("unknown").to_string();
+                        let content_hash = manifest["treeOid"].as_str().unwrap_or("unknown").to_string();
                         let file_size = std::fs::metadata(path)?.len();
 
                         let session_id = if file_name.starts_with("session-") {

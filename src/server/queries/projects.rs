@@ -3,7 +3,7 @@ use rusqlite::{params, Connection};
 
 use crate::server::responses::{ProjectDetail, ToolFrequency};
 
-pub fn get_projects(conn: &Connection) -> Result<Vec<ProjectDetail>> {
+pub fn get_projects(conn: &mut Connection) -> Result<Vec<ProjectDetail>> {
     // Pre-aggregate each table separately via CTEs, then join on project_slug.
     // This avoids the cross-product explosion of multi-table JOINs (66s → 0.2s).
     let mut stmt = conn.prepare(

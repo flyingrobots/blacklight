@@ -4,7 +4,7 @@ use rusqlite::{params, Connection};
 use crate::server::responses::{FileProvenance, FileReference, Paginated};
 
 pub fn get_file_references(
-    conn: &Connection,
+    conn: &mut Connection,
     path: Option<&str>,
     session: Option<&str>,
     limit: i64,
@@ -70,7 +70,7 @@ pub fn get_file_references(
     })
 }
 
-pub fn get_file_provenance(conn: &Connection, limit: i64) -> Result<Vec<FileProvenance>> {
+pub fn get_file_provenance(conn: &mut Connection, limit: i64) -> Result<Vec<FileProvenance>> {
     let mut stmt = conn.prepare(
         "SELECT file_path,
                 COUNT(DISTINCT session_id) as session_count,

@@ -4,7 +4,7 @@ use rusqlite::{params, Connection};
 use crate::server::responses::{Paginated, ReviewItem, SessionTag};
 
 pub fn list_pending(
-    conn: &Connection,
+    conn: &mut Connection,
     limit: i64,
     offset: i64,
 ) -> Result<Paginated<ReviewItem>> {
@@ -75,7 +75,7 @@ pub fn list_pending(
     })
 }
 
-pub fn approve_session(conn: &Connection, session_id: &str) -> Result<bool> {
+pub fn approve_session(conn: &mut Connection, session_id: &str) -> Result<bool> {
     let now = chrono::Utc::now().to_rfc3339();
     let rows = conn.execute(
         "UPDATE session_enrichments SET approval_status = 'approved', reviewed_at = ?1
@@ -85,7 +85,7 @@ pub fn approve_session(conn: &Connection, session_id: &str) -> Result<bool> {
     Ok(rows > 0)
 }
 
-pub fn reject_session(conn: &Connection, session_id: &str) -> Result<bool> {
+pub fn reject_session(conn: &mut Connection, session_id: &str) -> Result<bool> {
     let now = chrono::Utc::now().to_rfc3339();
     let rows = conn.execute(
         "UPDATE session_enrichments SET approval_status = 'rejected', reviewed_at = ?1
@@ -95,7 +95,7 @@ pub fn reject_session(conn: &Connection, session_id: &str) -> Result<bool> {
     Ok(rows > 0)
 }
 
-pub fn approve_all(conn: &Connection) -> Result<usize> {
+pub fn approve_all(conn: &mut Connection) -> Result<usize> {
     let now = chrono::Utc::now().to_rfc3339();
     let rows = conn.execute(
         "UPDATE session_enrichments SET approval_status = 'approved', reviewed_at = ?1

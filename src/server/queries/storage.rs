@@ -3,7 +3,7 @@ use rusqlite::Connection;
 
 use crate::server::responses::{StorageByKind, StorageOverview};
 
-pub fn get_storage_overview(conn: &Connection) -> Result<StorageOverview> {
+pub fn get_storage_overview(conn: &mut Connection) -> Result<StorageOverview> {
     let unique_blobs: i64 = conn.query_row(
         "SELECT COUNT(*) FROM content_store",
         [],

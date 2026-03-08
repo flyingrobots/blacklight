@@ -102,9 +102,9 @@ pub struct FlushStats {
 }
 
 /// Flush a batch of LineOps in a single transaction.
-pub fn flush_batch(conn: &Connection, batch: &[LineOps]) -> Result<FlushStats> {
+pub fn flush_batch(conn: &mut Connection, batch: &[LineOps]) -> Result<FlushStats> {
     let mut stats = FlushStats::default();
-    let tx = conn.unchecked_transaction().context("failed to begin transaction")?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).context("failed to begin transaction")?;
 
     // 1. INSERT OR IGNORE blobs → content_store
     {

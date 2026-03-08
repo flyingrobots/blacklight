@@ -120,6 +120,17 @@ async fn get_files(
     Ok(Json(serde_json::to_value(result)?))
 }
 
+fn get_git_cas_bin() -> String {
+    let local_bin = std::env::current_dir()
+        .unwrap_or_default()
+        .join("node_modules/.bin/git-cas");
+    if local_bin.exists() {
+        local_bin.to_string_lossy().to_string()
+    } else {
+        "git-cas".to_string()
+    }
+}
+
 async fn get_raw(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -178,14 +189,16 @@ async fn get_raw(
             }
 
             // Not in cache, restore from git-cas
-            let output = tokio::process::Command::new("git")
+            let git_cas_bin = get_git_cas_bin();
+            let output = tokio::process::Command::new(&git_cas_bin)
                 .args([
-                    "cas",
                     "restore",
                     "--oid",
                     &hash,
                     "--out",
                     cache_path.to_string_lossy().as_ref(),
+                    "--concurrency",
+                    "4",
                 ])
                 .current_dir(&backup_dir)
                 .output()

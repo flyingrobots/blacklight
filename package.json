@@ -12,7 +12,11 @@
     "dev": "concurrently \"cargo run -- serve\" \"cd frontend && npm run dev\""
   },
   "devDependencies": {
+    "@git-stunts/git-cas": "^5.3.0",
     "concurrently": "^9.2.1",
     "playwright": "^1.58.2"
+  },
+  "dependencies": {
+    "@git-stunts/git-cas": "^5.3.0"
   }
 }

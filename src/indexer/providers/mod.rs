@@ -14,7 +14,7 @@ impl SourceProvider for ClaudeProvider {
         matches!(kind, FileKind::SessionIndex | FileKind::SessionJsonl | FileKind::ClaudeDesktopSessionIndex)
     }
 
-    fn process_metadata(&self, conn: &Connection, entry: &FileEntry) -> Result<usize> {
+    fn process_metadata(&self, conn: &mut Connection, entry: &FileEntry) -> Result<usize> {
         match entry.kind {
             FileKind::SessionIndex => sessions::parse_session_index(conn, &entry.path),
             FileKind::ClaudeDesktopSessionIndex => sessions::parse_desktop_session_index(conn, &entry.path),
@@ -24,7 +24,7 @@ impl SourceProvider for ClaudeProvider {
 
     fn process_content(
         &self, 
-        conn: &Connection, 
+        conn: &mut Connection, 
         entry: &FileEntry, 
         start_offset: u64,
         redactor: Option<&Redactor>
@@ -57,7 +57,7 @@ impl SourceProvider for GeminiProvider {
 
     fn process_content(
         &self, 
-        conn: &Connection, 
+        conn: &mut Connection, 
         entry: &FileEntry, 
         _start_offset: u64,
         _redactor: Option<&Redactor>
@@ -81,7 +81,7 @@ impl SourceProvider for CodexProvider {
 
     fn process_content(
         &self, 
-        conn: &Connection, 
+        conn: &mut Connection, 
         entry: &FileEntry, 
         _start_offset: u64,
         _redactor: Option<&Redactor>

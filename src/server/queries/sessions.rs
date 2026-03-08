@@ -9,7 +9,7 @@ use crate::server::responses::{
 };
 
 pub fn list_sessions(
-    conn: &Connection,
+    conn: &mut Connection,
     project: Option<&str>,
     from: Option<&str>,
     to: Option<&str>,
@@ -180,7 +180,7 @@ pub fn list_sessions(
     })
 }
 
-pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>> {
+pub fn get_session(conn: &mut Connection, id: &str) -> Result<Option<SessionDetail>> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.project_path, s.project_slug,
                 COALESCE(s.first_prompt, (
@@ -269,7 +269,7 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
     }
 }
 
-pub fn get_session_tools(conn: &Connection, session_id: &str) -> Result<Vec<ToolCallDetail>> {
+pub fn get_session_tools(conn: &mut Connection, session_id: &str) -> Result<Vec<ToolCallDetail>> {
     let mut stmt = conn.prepare(
         "SELECT tc.id, tc.tool_name, tc.timestamp,
                 cs_in.content, cs_out.content
@@ -295,7 +295,7 @@ pub fn get_session_tools(conn: &Connection, session_id: &str) -> Result<Vec<Tool
     Ok(items)
 }
 
-pub fn get_session_files(conn: &Connection, session_id: &str) -> Result<Vec<FileReference>> {
+pub fn get_session_files(conn: &mut Connection, session_id: &str) -> Result<Vec<FileReference>> {
     let mut stmt = conn.prepare(
         "SELECT file_path, operation, session_id, message_id
          FROM file_references

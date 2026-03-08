@@ -15,7 +15,7 @@ async fn get_storage(
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
-        .call(storage::get_storage_overview)
+        .call(|conn| storage::get_storage_overview(conn))
         .await?;
 
     Ok(Json(serde_json::to_value(result)?))

@@ -53,7 +53,7 @@ pub struct CodexTaskUpdate {
 
 /// Process a Codex session JSONL file.
 pub fn process_codex_session(
-    conn: &Connection,
+    conn: &mut Connection,
     path: &Path,
     source_name: &str,
 ) -> Result<()> {

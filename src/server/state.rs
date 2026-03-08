@@ -36,11 +36,11 @@ impl DbPool {
     /// Execute a closure with a connection from the pool inside spawn_blocking.
     pub async fn call<F, T>(&self, f: F) -> Result<T>
     where
-        F: FnOnce(&Connection) -> Result<T> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T> + Send + 'static,
         T: Send + 'static,
     {
-        let conn = self.checkout()?;
-        let result = tokio::task::spawn_blocking(move || f(&conn))
+        let mut conn = self.checkout()?;
+        let result = tokio::task::spawn_blocking(move || f(&mut conn))
             .await
             .context("spawn_blocking join error")?;
         // Note: connection is dropped after spawn_blocking completes.

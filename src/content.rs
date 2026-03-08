@@ -135,8 +135,8 @@ pub fn get_blob_references(conn: &Connection, hash: &str) -> Result<Vec<BlobRefe
 
 /// Batch insert multiple blobs in a single transaction. Returns the count of newly
 /// inserted blobs (excludes dedup hits).
-pub fn insert_blobs_batch(conn: &Connection, blobs: &[ContentBlob]) -> Result<usize> {
-    let tx = conn.unchecked_transaction()?;
+pub fn insert_blobs_batch(conn: &mut Connection, blobs: &[ContentBlob]) -> Result<usize> {
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let mut inserted = 0usize;
     {
         let mut stmt = tx.prepare(

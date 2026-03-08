@@ -21,14 +21,14 @@ pub trait SourceProvider: Send + Sync {
     fn can_handle(&self, kind: &FileKind) -> bool;
 
     /// Process metadata/index files.
-    fn process_metadata(&self, _conn: &Connection, _entry: &FileEntry) -> Result<usize> {
+    fn process_metadata(&self, _conn: &mut Connection, _entry: &FileEntry) -> Result<usize> {
         Ok(0)
     }
 
     /// Process content files (streaming or full).
     fn process_content(
         &self, 
-        _conn: &Connection, 
+        _conn: &mut Connection, 
         entry: &FileEntry, 
         _start_offset: u64,
         _redactor: Option<&Redactor>

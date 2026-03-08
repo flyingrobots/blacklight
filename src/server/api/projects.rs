@@ -13,7 +13,7 @@ pub fn routes() -> Router<AppState> {
 async fn list_projects(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
-    let result = state.db.call(projects::get_projects).await?;
+    let result = state.db.call(|conn| projects::get_projects(conn)).await?;
+
     Ok(Json(serde_json::to_value(result)?))
 }
-

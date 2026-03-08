@@ -38,7 +38,7 @@ pub fn open_with_config(path: &Path, sqlite_config: &SqliteConfig) -> Result<Con
             .with_context(|| format!("failed to create directory {}", parent.display()))?;
     }
 
-    let conn = Connection::open(path)
+    let mut conn = Connection::open(path)
         .with_context(|| format!("failed to open database at {}", path.display()))?;
 
     // cache_size in KB (negative = KB in SQLite convention)
@@ -57,7 +57,7 @@ pub fn open_with_config(path: &Path, sqlite_config: &SqliteConfig) -> Result<Con
     conn.execute_batch(&pragmas)
         .context("failed to set database PRAGMAs")?;
 
-    migrate(&conn)?;
+    migrate(&mut conn)?;
 
     Ok(conn)
 }
@@ -71,14 +71,14 @@ pub fn default_db_path() -> PathBuf {
 }
 
 /// Run pending migrations against the database.
-fn migrate(conn: &Connection) -> Result<()> {
+fn migrate(conn: &mut Connection) -> Result<()> {
     let current_version: u32 =
         conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
     for &(version, sql) in MIGRATIONS {
         if version > current_version {
             tracing::info!("running migration v{version}");
-            let tx = conn.unchecked_transaction()?;
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
             tx.execute_batch(sql)
                 .with_context(|| format!("migration v{version} failed"))?;
             tx.pragma_update(None, "user_version", version)?;

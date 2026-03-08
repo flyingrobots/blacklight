@@ -1,77 +1,60 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Deserialize;
 
 use crate::error::BlacklightError;
+use crate::server::params::LimitParams;
 use crate::server::queries;
-use crate::server::responses::{Paginated, ReviewItem};
 use crate::server::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/review", get(list_pending))
-        .route("/review/{session_id}/approve", post(approve))
-        .route("/review/{session_id}/reject", post(reject))
+        .route("/review", get(list_review))
+        .route("/review/{id}/approve", post(approve))
+        .route("/review/{id}/reject", post(reject))
         .route("/review/approve-all", post(approve_all))
 }
 
-#[derive(Deserialize)]
-struct ListParams {
-    #[serde(default = "default_limit")]
-    limit: i64,
-    #[serde(default)]
-    offset: i64,
-}
-
-fn default_limit() -> i64 {
-    50
-}
-
-async fn list_pending(
+async fn list_review(
     State(state): State<AppState>,
-    axum::extract::Query(params): axum::extract::Query<ListParams>,
-) -> Result<Json<Paginated<ReviewItem>>, BlacklightError> {
+    Query(params): Query<LimitParams>,
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
-        .call(move |conn| queries::review::list_pending(conn, params.limit, params.offset))
+        .call(move |conn| {
+            queries::review::list_pending(conn, params.limit, params.offset)
+        })
         .await?;
 
-    Ok(Json(result))
+    Ok(Json(serde_json::to_value(result)?))
 }
 
 async fn approve(
     State(state): State<AppState>,
-    Path(session_id): Path<String>,
+    Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
-    let sid = session_id.clone();
-    let updated = state
+    state
         .db
-        .call(move |conn| queries::review::approve_session(conn, &sid))
+        .call(move |conn| {
+            queries::review::approve_session(conn, &id)
+        })
         .await?;
 
-    if !updated {
-        return Err(BlacklightError::NotFound("No pending enrichment found for this session".to_string()));
-    }
-
-    Ok(Json(serde_json::json!({ "message": "Approved", "session_id": session_id })))
+    Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
 async fn reject(
     State(state): State<AppState>,
-    Path(session_id): Path<String>,
+    Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
-    let sid = session_id.clone();
-    let updated = state
+    state
         .db
-        .call(move |conn| queries::review::reject_session(conn, &sid))
+        .call(move |conn| {
+            queries::review::reject_session(conn, &id)
+        })
         .await?;
 
-    if !updated {
-        return Err(BlacklightError::NotFound("No pending enrichment found for this session".to_string()));
-    }
-
-    Ok(Json(serde_json::json!({ "message": "Rejected", "session_id": session_id })))
+    Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
 async fn approve_all(
@@ -79,9 +62,8 @@ async fn approve_all(
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
     let count = state
         .db
-        .call(queries::review::approve_all)
+        .call(|conn| queries::review::approve_all(conn))
         .await?;
 
     Ok(Json(serde_json::json!({ "message": "Approved all", "count": count })))
 }
-
