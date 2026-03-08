@@ -91,6 +91,43 @@
           </template>
         </div>
       </div>
+
+      <!-- Outcome Classifier -->
+      <div class="status-card">
+        <div class="sc-header">
+          <h2>Outcome Classification</h2>
+          <span :class="['status-badge', `badge-${classifierStatus.status}`]">{{ classifierStatus.status }}</span>
+        </div>
+
+        <div v-if="classifierIsActive" class="progress-section">
+          <div class="progress-label">Classifying outcomes...</div>
+          <div class="progress-bar"><div class="progress-fill" :style="{ width: classifierPct + '%' }"></div></div>
+          <div class="progress-detail">
+            {{ classifierStatus.sessions_done }}/{{ classifierStatus.sessions_total }} done
+            <template v-if="classifierStatus.sessions_failed"> &middot; {{ classifierStatus.sessions_failed }} failed</template>
+          </div>
+        </div>
+
+        <div v-if="classifierStatus.latest_report" class="report-section">
+          <div class="report-stats">
+            {{ classifierStatus.latest_report.classified }} classified,
+            {{ classifierStatus.latest_report.skipped }} skipped,
+            {{ classifierStatus.latest_report.failed }} failed
+          </div>
+        </div>
+
+        <div v-if="classifierStatus.error_message" class="error-msg">{{ classifierStatus.error_message }}</div>
+
+        <div class="sc-controls">
+          <template v-if="classifierIsActive">
+            <button class="btn btn-danger" @click="doClassifyStop">Stop</button>
+          </template>
+          <template v-else>
+            <button class="btn btn-primary" @click="doClassifyStart(false)">Classify</button>
+            <button class="btn btn-secondary" @click="doClassifyStart(true)">Force All</button>
+          </template>
+        </div>
+      </div>
     </div>
 
     <!-- Schedule -->
@@ -256,7 +293,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { api } from '@/api/client'
-import type { IndexerStatusResponse, EnricherStatusResponse, ScheduleConfig, ReviewItem, MigrationStatusResponse, IndexRun } from '@/types'
+import type { IndexerStatusResponse, EnricherStatusResponse, ScheduleConfig, ReviewItem, MigrationStatusResponse, IndexRun, ClassifierState } from '@/types'
 
 const indexerStatus = ref<IndexerStatusResponse>({
   status: 'idle',
@@ -268,6 +305,10 @@ const runsLoading = ref(true)
 const enricherStatus = ref<EnricherStatusResponse>({
   status: 'idle', sessions_total: 0, sessions_done: 0, sessions_failed: 0,
   latest_report: null, error_message: null, required_version: 0, outdated_count: 0,
+})
+const classifierStatus = ref<ClassifierState>({
+  status: 'idle', sessions_total: 0, sessions_done: 0, sessions_failed: 0,
+  latest_report: null, error_message: null,
 })
 const migrationStatus = ref<MigrationStatusResponse>({
   status: 'idle', progress: { total_sessions: 0, backed_up: 0, fingerprints_updated: 0 },
@@ -287,6 +328,7 @@ let pollTimer: ReturnType<typeof setInterval>
 
 const indexerIsActive = computed(() => indexerStatus.value.status === 'running')
 const enricherIsActive = computed(() => enricherStatus.value.status === 'running')
+const classifierIsActive = computed(() => classifierStatus.value.status === 'running')
 const migrationIsActive = computed(() => migrationStatus.value.status === 'running')
 
 const indexerPct = computed(() => {
@@ -295,6 +337,10 @@ const indexerPct = computed(() => {
 })
 const enricherPct = computed(() => {
   const s = enricherStatus.value
+  return s.sessions_total === 0 ? 0 : Math.min(100, ((s.sessions_done + s.sessions_failed) / s.sessions_total) * 100)
+})
+const classifierPct = computed(() => {
+  const s = classifierStatus.value
   return s.sessions_total === 0 ? 0 : Math.min(100, ((s.sessions_done + s.sessions_failed) / s.sessions_total) * 100)
 })
 const migrationPct = computed(() => {
@@ -337,6 +383,16 @@ async function doEnrichStart(force: boolean) {
   } catch (e: any) { enricherStatus.value.error_message = e.message }
 }
 async function doEnrichStop() { try { await api.enrichment.stop() } catch { /* */ } }
+
+// Classifier
+async function doClassifyStart(force = false) {
+  try {
+    await api.classifier.start({ force })
+    classifierStatus.value.status = 'running'
+    classifierStatus.value.error_message = null
+  } catch (e: any) { classifierStatus.value.error_message = e.message }
+}
+async function doClassifyStop() { try { await api.classifier.stop() } catch { /* */ } }
 
 // Migration
 async function doMigrationStart() {
@@ -415,6 +471,7 @@ async function approveAll() {
 async function pollStatus() {
   try { indexerStatus.value = await api.indexer.status() } catch { /* */ }
   try { enricherStatus.value = await api.enrichment.status() } catch { /* */ }
+  try { classifierStatus.value = await api.classifier.status() } catch { /* */ }
   try { migrationStatus.value = await api.migration.status() } catch { /* */ }
   if (indexerIsActive.value) {
     loadRuns()

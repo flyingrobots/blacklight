@@ -302,6 +302,22 @@ export interface UpdateOutcomeParams {
   reason_code: string | null
 }
 
+export interface ClassifierReport {
+  classified: number
+  skipped: number
+  failed: number
+  total_candidates: number
+}
+
+export interface ClassifierState {
+  status: EnricherStatus
+  sessions_total: number
+  sessions_done: number
+  sessions_failed: number
+  latest_report: ClassifierReport | null
+  error_message: string | null
+}
+
 // Enricher types
 
 export type EnricherStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'

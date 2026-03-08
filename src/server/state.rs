@@ -192,6 +192,25 @@ pub struct IndexerState {
     pub run_id: Option<i64>,
 }
 
+/// Classifier control commands.
+#[derive(Debug)]
+pub enum ClassifierCommand {
+    Start { limit: Option<usize>, force: bool },
+    Stop,
+}
+
+/// Shared classifier state broadcast to API handlers.
+#[derive(Clone, Debug, Default, Serialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
+pub struct ClassifierState {
+    pub status: EnricherStatus, // reuse EnricherStatus
+    pub sessions_total: usize,
+    pub sessions_done: usize,
+    pub sessions_failed: usize,
+    pub latest_report: Option<crate::classifier::ClassifierReport>,
+    pub error_message: Option<String>,
+}
+
 /// Shared application state passed to all axum handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -199,6 +218,8 @@ pub struct AppState {
     pub config: Arc<BlacklightConfig>,
     pub indexer: tokio::sync::watch::Receiver<IndexerState>,
     pub indexer_tx: tokio::sync::mpsc::Sender<IndexerCommand>,
+    pub classifier: tokio::sync::watch::Receiver<ClassifierState>,
+    pub classifier_tx: tokio::sync::mpsc::Sender<ClassifierCommand>,
     pub enricher: Arc<tokio::sync::Mutex<EnricherState>>,
     pub migration: Arc<tokio::sync::Mutex<MigrationState>>,
     pub scheduler: Arc<tokio::sync::Mutex<Option<SchedulerHandle>>>,

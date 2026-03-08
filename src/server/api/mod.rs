@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod classifier;
 pub mod content;
 pub mod enrichment;
 pub mod files;

@@ -10,7 +10,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(api::sessions::routes())
         .merge(api::search::routes())
         .merge(api::analytics::routes())
-        .merge(api::projects::routes())
+        .merge(api::classifier::routes())
         .merge(api::content::routes())
         .merge(api::files::routes())
         .merge(api::storage::routes())

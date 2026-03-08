@@ -4,7 +4,7 @@ use rusqlite::params;
 
 use crate::enrich::EnrichConfig;
 use crate::notifications::{self, NotificationLevel};
-use crate::server::state::{AppState, EnricherStatus, IndexerCommand, IndexerStatus, SchedulerHandle};
+use crate::server::state::{AppState, EnricherStatus, IndexerCommand, IndexerStatus, SchedulerHandle, ClassifierCommand};
 
 /// Spawn the background scheduler loop. Returns a handle for cancellation.
 pub fn spawn_scheduler(state: AppState) -> SchedulerHandle {
@@ -71,6 +71,7 @@ async fn scheduler_loop(state: AppState, cancel_flag: Arc<AtomicBool>) {
         // Run enrichment if enabled and not already running
         if config.run_enrichment {
             run_scheduled_enrichment(&state, config.enrichment_concurrency).await;
+            run_scheduled_classification(&state).await;
         }
     }
 }
@@ -203,4 +204,11 @@ async fn run_scheduled_enrichment(state: &AppState, concurrency: i32) {
             );
         }
     }
+}
+
+async fn run_scheduled_classification(state: &AppState) {
+    if state.classifier.borrow().status == EnricherStatus::Running {
+        return;
+    }
+    let _ = state.classifier_tx.send(ClassifierCommand::Start { limit: None, force: false }).await;
 }

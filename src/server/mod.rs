@@ -1,4 +1,5 @@
 pub mod api;
+mod classifier_actor;
 mod embedded;
 mod indexer_actor;
 pub mod params;
@@ -15,8 +16,9 @@ use tokio::sync::{mpsc, watch};
 
 use crate::config::BlacklightConfig;
 use crate::notifications;
-use state::{AppState, DbPool, EnricherState, IndexerState, MigrationState};
+use state::{AppState, DbPool, EnricherState, IndexerState, MigrationState, ClassifierState};
 use indexer_actor::IndexerActor;
+use classifier_actor::ClassifierActor;
 
 /// Start the web server on the given port.
 pub async fn start_server(
@@ -30,11 +32,16 @@ pub async fn start_server(
     let (indexer_tx, indexer_rx) = mpsc::channel(32);
     let (state_tx, state_rx) = watch::channel(IndexerState::default());
 
+    let (classifier_tx, classifier_rx) = mpsc::channel(32);
+    let (c_state_tx, c_state_rx) = watch::channel(ClassifierState::default());
+
     let state = AppState {
         db: Arc::new(pool),
         config: Arc::new(config.clone()),
         indexer: state_rx,
         indexer_tx,
+        classifier: c_state_rx,
+        classifier_tx,
         enricher: Arc::new(tokio::sync::Mutex::new(EnricherState::default())),
         migration: Arc::new(tokio::sync::Mutex::new(MigrationState::default())),
         scheduler: Arc::new(tokio::sync::Mutex::new(None)),
@@ -43,6 +50,9 @@ pub async fn start_server(
 
     // Spawn the Indexer Actor
     IndexerActor::spawn(state.clone(), indexer_rx, state_tx);
+
+    // Spawn the Classifier Actor
+    ClassifierActor::spawn(state.clone(), classifier_rx, c_state_tx);
 
     // Spawn the background scheduler
     let handle = scheduler::spawn_scheduler(state.clone());

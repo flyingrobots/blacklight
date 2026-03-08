@@ -5,7 +5,8 @@ import type {
   ProjectDetail, OutcomeStats, StorageOverview, ContentBlob,
   IndexCoverage, IndexerStatusResponse, EnricherStatusResponse,
   ReviewItem, ScheduleConfig, MigrationStatusResponse, LlmBreakdown,
-  DailyProjectStats, IndexRun, UpdateOutcomeParams, OutcomeBreakdown
+  DailyProjectStats, IndexRun, UpdateOutcomeParams, OutcomeBreakdown,
+  ClassifierState
 } from '@/types'
 
 const BASE = '/api'
@@ -117,6 +118,13 @@ export const api = {
     stop: () => post<unknown>(`${BASE}/enrichment/stop`),
     pendingCount: () => get<{ count: number }>(`${BASE}/enrichment/pending-count`),
     logs: () => get<string[]>(`${BASE}/enrichment/logs`),
+  },
+
+  classifier: {
+    status: () => get<ClassifierState>(`${BASE}/classifier/status`),
+    start: (params?: { limit?: number; force?: boolean }) =>
+      post<unknown>(`${BASE}/classifier/start`, params ?? {}),
+    stop: () => post<unknown>(`${BASE}/classifier/stop`),
   },
 
   review: {

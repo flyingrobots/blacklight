@@ -48,7 +48,7 @@ pub struct EnrichConfig {
 }
 
 /// Helper to push a log line to a shared buffer.
-fn push_log(log: &Option<Arc<Mutex<Vec<String>>>>, msg: String) {
+pub fn push_log(log: &Option<Arc<Mutex<Vec<String>>>>, msg: String) {
     if let Some(ref buf) = log {
         let mut lines = buf.lock().unwrap();
         lines.push(msg);
@@ -450,6 +450,22 @@ fn extract_json(text: &str) -> &str {
     trimmed
 }
 
+pub fn build_session_digest_pub(conn: &Connection, session_id: &str) -> Result<Option<String>> {
+    build_session_digest(conn, session_id)
+}
+
+pub async fn auto_detect_ollama_pub(base_url: &str) -> Option<String> {
+    auto_detect_ollama(base_url).await
+}
+
+pub fn parse_claude_jsonl_output_pub(stdout: &str) -> Result<String> {
+    parse_claude_jsonl_output(stdout)
+}
+
+pub fn extract_json_pub(text: &str) -> &str {
+    extract_json(text)
+}
+
 /// Store enrichment results into the database.
 fn store_enrichment_internal(
     conn: &Connection,
@@ -717,11 +733,6 @@ pub async fn run_enrich(config: EnrichConfig) -> Result<EnrichReport> {
         failed: failed.load(Ordering::Relaxed),
         total_candidates,
     })
-}
-
-// Public wrappers for use by the single-session enrichment API endpoint.
-pub fn build_session_digest_pub(conn: &Connection, session_id: &str) -> Result<Option<String>> {
-    build_session_digest(conn, session_id)
 }
 
 pub async fn call_model_pub(digest: &str, ollama_url: &str) -> Result<(EnrichmentResult, String)> {
