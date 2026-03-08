@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 
-use crate::indexer::db_ops::{self, LineOps, MessageRow, ContentBlockRow};
+use crate::indexer::db_ops::{self, LineOps, MessageRow, ContentBlockRow, ToolCallRow};
 use crate::content::hash_content;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -25,6 +25,32 @@ pub struct CodexSessionMeta {
     pub model_provider: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CodexToolCall {
+    pub id: String,
+    pub name: String,
+    pub input: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CodexToolResponse {
+    #[serde(rename = "toolUseId")]
+    pub tool_use_id: String,
+    pub content: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CodexTaskUpdate {
+    pub id: String,
+    pub subject: String,
+    pub description: String,
+    pub status: String,
+    #[serde(rename = "activeForm")]
+    pub active_form: Option<String>,
+    #[serde(rename = "blockedBy", default)]
+    pub blocked_by: Vec<String>,
+}
+
 /// Process a Codex session JSONL file.
 pub fn process_codex_session(
     conn: &Connection,
@@ -35,7 +61,8 @@ pub fn process_codex_session(
         .with_context(|| format!("failed to open Codex session: {}", path.display()))?;
     let reader = std::io::BufReader::new(file);
     let mut session_id = String::new();
-    let mut batch = Vec::new();
+    let mut last_assistant_msg_id: Option<String> = None;
+    let mut last_user_msg_id: Option<String> = None;
     let mut turn_index = 0;
 
     use std::io::BufRead;
@@ -106,7 +133,13 @@ pub fn process_codex_session(
 
                 fp_hasher.update(content_str.as_bytes());
 
-                let role = if msg.msg_type == "response_item" || msg.msg_type == "final" { "assistant" } else { "user" };
+                let role = if msg.msg_type == "response_item" || msg.msg_type == "final" { 
+                    last_assistant_msg_id = Some(msg_id.clone());
+                    "assistant" 
+                } else { 
+                    last_user_msg_id = Some(msg_id.clone());
+                    "user" 
+                };
 
                 ops.message = Some(MessageRow {
                     id: msg_id.clone(),
@@ -128,6 +161,7 @@ pub fn process_codex_session(
                     let hash = hash_content(&content_str);
                     ops.blobs.push((hash.clone(), content_str.clone(), content_str.len() as i64, "text".into()));
                     ops.blob_refs.push((hash.clone(), msg_id.clone(), "text".into()));
+                    ops.fts_entries.push((hash.clone(), "text".into(), content_str));
                     ops.content_blocks.push(ContentBlockRow {
                         message_id: msg_id.clone(),
                         block_index: 0,
@@ -143,15 +177,98 @@ pub fn process_codex_session(
                     msg_ref.fingerprint = Some(fp_hasher.finalize().to_hex().to_string());
                 }
 
-                batch.push(ops);
+                db_ops::flush_batch(conn, &[ops])?;
                 turn_index += 1;
+            }
+            "tool_call" => {
+                if session_id.is_empty() { continue; }
+                let call: CodexToolCall = serde_json::from_value(msg.payload)?;
+                let parent_id = last_assistant_msg_id.as_ref().cloned().unwrap_or_else(|| format!("{}-init", session_id));
+
+                let input_json = serde_json::to_string(&call.input)?;
+                let input_hash = hash_content(&input_json);
+
+                let mut ops = LineOps::default();
+                ops.blobs.push((input_hash.clone(), input_json, 0, "tool_input".into()));
+                ops.tool_calls.push(ToolCallRow {
+                    id: call.id.clone(),
+                    message_id: parent_id.clone(),
+                    session_id: session_id.clone(),
+                    tool_name: call.name.clone(),
+                    input_hash: Some(input_hash.clone()),
+                    timestamp: msg.timestamp.clone(),
+                    fingerprint: None,
+                });
+                ops.content_blocks.push(ContentBlockRow {
+                    message_id: parent_id,
+                    block_index: 1000 + (call.id.as_bytes()[0] as i64), // arbitrary stable index
+                    block_type: "tool_use".into(),
+                    content_hash: None,
+                    tool_name: Some(call.name),
+                    tool_use_id: Some(call.id),
+                    tool_input_hash: Some(input_hash),
+                });
+                db_ops::flush_batch(conn, &[ops])?;
+            }
+            "tool_response" => {
+                if session_id.is_empty() { continue; }
+                let resp: CodexToolResponse = serde_json::from_value(msg.payload)?;
+                let parent_id = last_user_msg_id.as_ref().cloned().unwrap_or_else(|| format!("{}-init", session_id));
+
+                let content_json = serde_json::to_string(&resp.content)?;
+                let content_hash = hash_content(&content_json);
+
+                let mut ops = LineOps::default();
+                ops.blobs.push((content_hash.clone(), content_json, 0, "tool_output".into()));
+                ops.tool_output_links.push((resp.tool_use_id.clone(), content_hash.clone()));
+                ops.content_blocks.push(ContentBlockRow {
+                    message_id: parent_id,
+                    block_index: 2000 + (resp.tool_use_id.as_bytes()[0] as i64),
+                    block_type: "tool_result".into(),
+                    content_hash: Some(content_hash),
+                    tool_name: None,
+                    tool_use_id: Some(resp.tool_use_id),
+                    tool_input_hash: None,
+                });
+                db_ops::flush_batch(conn, &[ops])?;
+            }
+            "plan_update" => {
+                if session_id.is_empty() { continue; }
+                if let Some(plan) = msg.payload.get("plan") {
+                    let plan_str = if plan.is_string() { 
+                        plan.as_str().unwrap().to_string() 
+                    } else { 
+                        serde_json::to_string_pretty(plan)? 
+                    };
+                    
+                    let hash = hash_content(&plan_str);
+                    let mut ops = LineOps::default();
+                    ops.blobs.push((hash.clone(), plan_str.clone(), plan_str.len() as i64, "plan".into()));
+                    ops.fts_entries.push((hash.clone(), "plan".into(), plan_str));
+                    db_ops::flush_batch(conn, &[ops])?;
+                }
+            }
+            "task_update" => {
+                if session_id.is_empty() { continue; }
+                let task: CodexTaskUpdate = serde_json::from_value(msg.payload)?;
+                db_ops::record_task(
+                    conn,
+                    &task.id,
+                    &session_id,
+                    &task.subject,
+                    &task.description,
+                    task.active_form.as_deref(),
+                    &task.status,
+                )?;
+                for dep in &task.blocked_by {
+                    db_ops::record_task_dependency(conn, &session_id, &task.id, dep)?;
+                }
             }
             _ => {}
         }
     }
 
-    if !batch.is_empty() {
-        db_ops::flush_batch(conn, &batch)?;
+    if !session_id.is_empty() {
         db_ops::update_session_fingerprint(conn, &session_id)?;
     }
 

@@ -356,6 +356,39 @@ pub fn record_run_finish(
     Ok(())
 }
 
+/// Record a task.
+pub fn record_task(
+    conn: &Connection,
+    id: &str,
+    session_id: &str,
+    subject: &str,
+    description: &str,
+    active_form: Option<&str>,
+    status: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO tasks (id, session_id, subject, description, active_form, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, session_id, subject, description, active_form, status],
+    ).context("failed to record task")?;
+    Ok(())
+}
+
+/// Record a task dependency.
+pub fn record_task_dependency(
+    conn: &Connection,
+    session_id: &str,
+    task_id: &str,
+    depends_on: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO task_dependencies (session_id, task_id, depends_on)
+         VALUES (?1, ?2, ?3)",
+        params![session_id, task_id, depends_on],
+    ).context("failed to record task dependency")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
