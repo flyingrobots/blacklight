@@ -35,7 +35,7 @@ async fn approve(
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
     state
         .db
-        .call(move |conn| {
+        .write(move |conn| {
             queries::review::approve_session(conn, &id)
         })
         .await?;
@@ -49,7 +49,7 @@ async fn reject(
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
     state
         .db
-        .call(move |conn| {
+        .write(move |conn| {
             queries::review::reject_session(conn, &id)
         })
         .await?;
@@ -62,7 +62,7 @@ async fn approve_all(
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
     let count = state
         .db
-        .call(|conn| queries::review::approve_all(conn))
+        .write(|conn| queries::review::approve_all(conn))
         .await?;
 
     Ok(Json(serde_json::json!({ "message": "Approved all", "count": count })))

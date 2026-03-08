@@ -49,7 +49,7 @@ async fn generate_digest(
         preferred_backend: config.preferred_backend,
     };
 
-    let result = digest::generate_weekly_digest(digest_config, params.start_date, params.end_date).await?;
+    let result = digest::generate_weekly_digest(state.db.clone(), digest_config, params.start_date, params.end_date).await?;
 
     Ok(Json(serde_json::to_value(result)?))
 }

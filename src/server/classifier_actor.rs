@@ -58,6 +58,17 @@ impl ClassifierActor {
         info!("Starting outcome classification run (force={force})");
         self.cancel_flag.store(false, Ordering::Relaxed);
 
+        // Pre-record run in DB to get an ID (using indexer's run ledger for now)
+        let run_id = match self.app_state.db.write(move |conn| {
+            crate::indexer::db_ops::record_run_start(conn, force)
+        }).await {
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::error!("Failed to record classifier run start: {e:#}");
+                None
+            }
+        };
+
         // Reset state
         self.state_tx.send_modify(|s| {
             s.status = EnricherStatus::Running;
@@ -66,6 +77,7 @@ impl ClassifierActor {
             s.sessions_failed = 0;
             s.latest_report = None;
             s.error_message = None;
+            s.run_id = run_id;
         });
 
         let state_tx = self.state_tx.clone();

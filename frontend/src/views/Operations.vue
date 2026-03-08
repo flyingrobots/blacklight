@@ -59,11 +59,10 @@
         </div>
 
         <div v-if="enricherIsActive" class="progress-section">
-          <div class="progress-label">Enriching sessions...</div>
+          <div class="progress-label">Enriching batch ({{ enricherStatus.sessions_done }}/{{ enricherStatus.sessions_total }})</div>
           <div class="progress-bar"><div class="progress-fill" :style="{ width: enricherPct + '%' }"></div></div>
-          <div class="progress-detail">
-            {{ enricherStatus.sessions_done }}/{{ enricherStatus.sessions_total }} done
-            <template v-if="enricherStatus.sessions_failed"> &middot; {{ enricherStatus.sessions_failed }} failed</template>
+          <div class="progress-detail" v-if="enricherStatus.outdated_count > 0">
+            {{ enricherStatus.outdated_count }} total sessions need enrichment
           </div>
         </div>
 
@@ -75,7 +74,7 @@
           </div>
         </div>
 
-        <div v-if="enricherStatus.outdated_count > 0" class="outdated-note">
+        <div v-if="!enricherIsActive && enricherStatus.outdated_count > 0" class="outdated-note">
           {{ enricherStatus.outdated_count }} sessions need enrichment
         </div>
 
@@ -100,11 +99,10 @@
         </div>
 
         <div v-if="classifierIsActive" class="progress-section">
-          <div class="progress-label">Classifying outcomes...</div>
+          <div class="progress-label">Classifying batch ({{ classifierStatus.sessions_done }}/{{ classifierStatus.sessions_total }})</div>
           <div class="progress-bar"><div class="progress-fill" :style="{ width: classifierPct + '%' }"></div></div>
-          <div class="progress-detail">
-            {{ classifierStatus.sessions_done }}/{{ classifierStatus.sessions_total }} done
-            <template v-if="classifierStatus.sessions_failed"> &middot; {{ classifierStatus.sessions_failed }} failed</template>
+          <div class="progress-detail" v-if="classifierStatus.latest_report">
+            {{ classifierStatus.latest_report.total_candidates }} total sessions need classification
           </div>
         </div>
 

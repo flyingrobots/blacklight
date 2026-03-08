@@ -67,7 +67,7 @@ impl IndexerActor {
         self.pause_flag.store(false, Ordering::Relaxed);
 
         // Pre-record run in DB to get an ID
-        let run_id = match self.app_state.db.call(move |conn| {
+        let run_id = match self.app_state.db.write(move |conn| {
             crate::indexer::db_ops::record_run_start(conn, full)
         }).await {
             Ok(id) => Some(id),

@@ -3,8 +3,10 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::enrich;
+use crate::db::DbPool;
 
 #[derive(Debug)]
 pub struct DigestConfig {
@@ -31,16 +33,13 @@ pub struct WeeklyDigest {
     pub created_at: String,
 }
 
-pub async fn generate_weekly_digest(config: DigestConfig, start_date: String, end_date: String) -> Result<WeeklyDigest> {
-    let db_path = config.db_path.clone();
+pub async fn generate_weekly_digest(pool: Arc<DbPool>, config: DigestConfig, start_date: String, end_date: String) -> Result<WeeklyDigest> {
     let start_date_clone = start_date.clone();
     let end_date_clone = end_date.clone();
 
-    // Run DB-intensive parts in spawn_blocking
-    let (stats, context) = tokio::task::spawn_blocking(move || -> Result<((i32, i32, i32, i32, i32, i32), String)> {
-        let conn = crate::db::open(&db_path)?;
-
-        // 1. Gather stats
+    // 1. Gather stats and context using pool.call
+    let (stats, context) = pool.call(move |conn| -> Result<((i32, i32, i32, i32, i32, i32), String)> {
+        // Gather stats
         let stats = conn.query_row(
             "SELECT 
                 COUNT(s.id),
@@ -67,7 +66,7 @@ pub async fn generate_weekly_digest(config: DigestConfig, start_date: String, en
             anyhow::bail!("No sessions found for the period {} to {}", start_date_clone, end_date_clone);
         }
 
-        // 2. Gather summaries
+        // Gather summaries
         let mut stmt = conn.prepare(
             "SELECT s.project_slug, COALESCE(e.title, s.id) as title, COALESCE(e.summary, s.summary) as summary, o.outcome, o.reason_code
              FROM sessions s
@@ -94,11 +93,11 @@ pub async fn generate_weekly_digest(config: DigestConfig, start_date: String, en
         })?.collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok((stats, summaries.join("\n")))
-    }).await??;
+    }).await?;
 
     let (session_count, success_count, failed_count, partial_count, abandoned_count, message_count) = stats;
 
-    // 3. Call LLM (already async)
+    // 2. Call LLM (async)
     let prompt = format!(
         "You are an engineering lead reviewing a week of AI-assisted coding work.
 Period: {} to {}
@@ -121,23 +120,21 @@ Session Summaries:
 
     let content = call_llm_for_digest(&config, &prompt).await?;
 
-    // 4. Store in DB (blocking)
-    let db_path = config.db_path.clone();
+    // 3. Store in DB using pool.write
     let content_clone = content.clone();
     let now = chrono::Utc::now().to_rfc3339();
     let now_clone = now.clone();
     let start_date_db = start_date.clone();
     let end_date_db = end_date.clone();
 
-    let id = tokio::task::spawn_blocking(move || -> Result<i64> {
-        let conn = crate::db::open(&db_path)?;
+    let id = pool.write(move |conn| -> Result<i64> {
         conn.execute(
             "INSERT INTO weekly_digests (start_date, end_date, content, session_count, success_count, failed_count, partial_count, abandoned_count, message_count, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![start_date_db, end_date_db, content_clone, session_count, success_count, failed_count, partial_count, abandoned_count, message_count, now_clone],
         )?;
         Ok(conn.last_insert_rowid())
-    }).await??;
+    }).await?;
 
     Ok(WeeklyDigest {
         id,
@@ -211,7 +208,7 @@ async fn call_claude_raw(prompt: &str) -> Result<String> {
     Ok(stdout.to_string())
 }
 
-pub fn list_digests(conn: &Connection, limit: i64, offset: i64) -> Result<Vec<WeeklyDigest>> {
+pub fn list_digests(conn: &mut Connection, limit: i64, offset: i64) -> Result<Vec<WeeklyDigest>> {
     let mut stmt = conn.prepare(
         "SELECT id, start_date, end_date, content, session_count, success_count, failed_count, partial_count, abandoned_count, message_count, created_at
          FROM weekly_digests

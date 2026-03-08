@@ -58,7 +58,7 @@ async fn scheduler_loop(state: AppState, cancel_flag: Arc<AtomicBool>) {
         let next = chrono::Utc::now() + chrono::Duration::minutes(config.interval_minutes as i64);
         let next_str = next.to_rfc3339();
 
-        let _ = state.db.call(move |conn| {
+        let _ = state.db.write(move |conn| {
             conn.execute(
                 "UPDATE schedule_config SET last_run_at = ?1, next_run_at = ?2 WHERE id = 1",
                 params![now, next_str],

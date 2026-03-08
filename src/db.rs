@@ -1,10 +1,85 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use crate::config::SqliteConfig;
 
 pub mod query_builder;
+
+/// A pool of SQLite connections for use with tokio::spawn_blocking.
+/// rusqlite Connection is !Send, so we hold them behind a Mutex and
+/// move them into blocking tasks.
+pub struct DbPool {
+    connections: Mutex<Vec<Connection>>,
+    writer: Arc<Mutex<Connection>>,
+    db_path: PathBuf,
+    pool_size: usize,
+}
+
+impl DbPool {
+    pub fn new(db_path: &Path, pool_size: usize) -> Result<Self> {
+        let mut connections = Vec::with_capacity(pool_size);
+        for _ in 0..pool_size {
+            connections.push(open(db_path)?);
+        }
+        let writer = Arc::new(Mutex::new(open(db_path)?));
+        Ok(Self {
+            connections: Mutex::new(connections),
+            writer,
+            db_path: db_path.to_path_buf(),
+            pool_size,
+        })
+    }
+
+    /// Execute a READ-ONLY closure with a connection from the pool.
+    pub async fn call<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut Connection) -> Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let mut conn = self.checkout()?;
+        let result = tokio::task::spawn_blocking(move || f(&mut conn))
+            .await
+            .context("spawn_blocking join error")?;
+        result
+    }
+
+    /// Execute a WRITE closure using the dedicated single writer.
+    pub async fn write<F, T>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut Connection) -> Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let writer = self.writer.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut conn = writer.lock().unwrap();
+            f(&mut conn)
+        })
+        .await
+        .context("spawn_blocking join error")?;
+        result
+    }
+
+    fn checkout(&self) -> Result<Connection> {
+        let mut pool = self.connections.lock().unwrap();
+        if let Some(conn) = pool.pop() {
+            Ok(conn)
+        } else {
+            // Pool exhausted — open a new connection
+            open(&self.db_path)
+        }
+    }
+
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
+    #[allow(dead_code)]
+    pub fn pool_size(&self) -> usize {
+        self.pool_size
+    }
+}
 
 const MIGRATION_001: &str = include_str!("schema.sql");
 const MIGRATION_002: &str = include_str!("enrich_migration.sql");
@@ -142,7 +217,7 @@ mod tests {
         let version: u32 = conn2
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 8);
     }
 
     #[test]

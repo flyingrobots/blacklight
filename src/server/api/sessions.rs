@@ -34,7 +34,7 @@ async fn update_outcome(
     Path(id): Path<String>,
     Json(params): Json<UpdateOutcomeParams>,
 ) -> Result<Json<serde_json::Value>, BlacklightError> {
-    state.db.call(move |conn| {
+    state.db.write(move |conn| {
         conn.execute(
             "INSERT OR REPLACE INTO session_outcomes (session_id, outcome, reason_code, is_user_labeled)
              VALUES (?1, ?2, ?3, 1)",
