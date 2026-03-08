@@ -128,6 +128,45 @@
       </div>
     </section>
 
+    <!-- Ingestion Trust -->
+    <section class="section-card">
+      <div class="sc-header">
+        <h2>Ingestion Trust</h2>
+        <span class="review-count" v-if="indexRuns.length > 0">{{ indexRuns.length }} runs recorded</span>
+      </div>
+
+      <div v-if="runsLoading" class="loading-inline">Loading runs...</div>
+      <div v-else-if="indexRuns.length === 0" class="empty-review">No indexing runs recorded yet.</div>
+      <div v-else class="runs-table-container">
+        <table class="runs-table">
+          <thead>
+            <tr>
+              <th>Started</th>
+              <th>Status</th>
+              <th>Type</th>
+              <th>Files</th>
+              <th>Msgs</th>
+              <th>Blobs</th>
+              <th>Errors</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="run in indexRuns" :key="run.id">
+              <td class="run-date">{{ fmtDate(run.started_at) }}</td>
+              <td><span :class="['status-badge', `badge-${run.status}`]">{{ run.status }}</span></td>
+              <td class="run-type">{{ run.is_full ? 'Full' : 'Incr' }}</td>
+              <td class="run-stats">{{ run.files_processed }}/{{ run.files_scanned }}</td>
+              <td class="run-stats">{{ run.messages_processed.toLocaleString() }}</td>
+              <td class="run-stats">{{ run.blobs_inserted.toLocaleString() }}</td>
+              <td :class="['run-stats', { 'has-errors': run.errors > 0 }]" :title="run.error_message || ''">
+                {{ run.errors }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Review queue -->
     <section class="section-card">
       <div class="sc-header">
@@ -217,13 +256,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { api } from '@/api/client'
-import type { IndexerStatusResponse, EnricherStatusResponse, ScheduleConfig, ReviewItem, MigrationStatusResponse } from '@/types'
+import type { IndexerStatusResponse, EnricherStatusResponse, ScheduleConfig, ReviewItem, MigrationStatusResponse, IndexRun } from '@/types'
 
 const indexerStatus = ref<IndexerStatusResponse>({
   status: 'idle',
   progress: { phase: '', files_total: 0, files_done: 0, messages_processed: 0, blobs_inserted: 0 },
   latest_report: null, error_message: null, required_version: 0, outdated_count: 0,
 })
+const indexRuns = ref<IndexRun[]>([])
+const runsLoading = ref(true)
 const enricherStatus = ref<EnricherStatusResponse>({
   status: 'idle', sessions_total: 0, sessions_done: 0, sessions_failed: 0,
   latest_report: null, error_message: null, required_version: 0, outdated_count: 0,
@@ -307,6 +348,14 @@ async function doMigrationStart() {
   } catch (e: any) { migrationStatus.value.error_message = e.message }
 }
 
+// Index Runs
+async function loadRuns() {
+  try {
+    const result = await api.indexer.runs({ limit: 10 })
+    indexRuns.value = result.items
+  } catch { /* */ } finally { runsLoading.value = false }
+}
+
 // Schedule
 async function loadSchedule() {
   try {
@@ -367,6 +416,9 @@ async function pollStatus() {
   try { indexerStatus.value = await api.indexer.status() } catch { /* */ }
   try { enricherStatus.value = await api.enrichment.status() } catch { /* */ }
   try { migrationStatus.value = await api.migration.status() } catch { /* */ }
+  if (indexerIsActive.value) {
+    loadRuns()
+  }
 }
 
 watch(logsExpanded, async (open) => {
@@ -377,7 +429,7 @@ watch(logsExpanded, async (open) => {
 })
 
 onMounted(async () => {
-  await Promise.all([pollStatus(), loadSchedule(), loadReview()])
+  await Promise.all([pollStatus(), loadSchedule(), loadReview(), loadRuns()])
   pollTimer = setInterval(pollStatus, 2000)
 })
 
@@ -656,4 +708,55 @@ onUnmounted(() => clearInterval(pollTimer))
 
 .log-line { color: var(--bl-text-2); white-space: pre-wrap; word-break: break-all; }
 .log-err { color: var(--bl-danger); }
+
+/* Ingestion Trust */
+.runs-table-container {
+  overflow-x: auto;
+  margin: -0.5rem -0.75rem;
+}
+
+.runs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text);
+}
+
+.runs-table th {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--bl-border);
+  color: var(--bl-text-3);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.runs-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--bl-border-2);
+  white-space: nowrap;
+}
+
+.runs-table tr:last-child td {
+  border-bottom: none;
+}
+
+.run-date {
+  color: var(--bl-text-2);
+}
+
+.run-type {
+  color: var(--bl-text-3);
+}
+
+.run-stats {
+  font-family: var(--bl-font-mono);
+  text-align: right;
+}
+
+.has-errors {
+  color: var(--bl-danger);
+  font-weight: 600;
+}
 </style>

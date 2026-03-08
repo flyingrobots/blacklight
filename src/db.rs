@@ -11,6 +11,7 @@ const MIGRATION_002: &str = include_str!("enrich_migration.sql");
 const MIGRATION_003: &str = include_str!("schedule_migration.sql");
 const MIGRATION_004: &str = include_str!("provenance_migration.sql");
 const MIGRATION_005: &str = include_str!("version_migration.sql");
+const MIGRATION_006: &str = include_str!("index_run_migration.sql");
 
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, MIGRATION_001),
@@ -18,6 +19,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (3, MIGRATION_003),
     (4, MIGRATION_004),
     (5, MIGRATION_005),
+    (6, MIGRATION_006),
 ];
 
 /// Open or create a SQLite database with default PRAGMA settings.
@@ -121,7 +123,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 
     #[test]
@@ -136,7 +138,7 @@ mod tests {
         let version: u32 = conn2
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 
     #[test]

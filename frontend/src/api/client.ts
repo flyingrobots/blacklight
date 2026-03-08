@@ -5,7 +5,7 @@ import type {
   ProjectDetail, OutcomeStats, StorageOverview, ContentBlob,
   IndexCoverage, IndexerStatusResponse, EnricherStatusResponse,
   ReviewItem, ScheduleConfig, MigrationStatusResponse, LlmBreakdown,
-  DailyProjectStats
+  DailyProjectStats, IndexRun
 } from '@/types'
 
 const BASE = '/api'
@@ -99,6 +99,8 @@ export const api = {
 
   indexer: {
     status: () => get<IndexerStatusResponse>(`${BASE}/indexer/status`),
+    runs: (params?: { limit?: number; offset?: number }) =>
+      get<Paginated<IndexRun>>(`${BASE}/indexer/runs`, params),
     start: (full = false) => post<unknown>(`${BASE}/indexer/start`, { full }),
     stop: () => post<unknown>(`${BASE}/indexer/stop`),
     pause: () => post<unknown>(`${BASE}/indexer/pause`),

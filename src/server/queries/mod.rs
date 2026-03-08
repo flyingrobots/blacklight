@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod files;
+pub mod indexer;
 pub mod messages;
 pub mod projects;
 pub mod review;

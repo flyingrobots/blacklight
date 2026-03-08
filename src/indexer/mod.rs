@@ -47,6 +47,8 @@ pub struct IndexConfig {
     pub pause_flag: Option<Arc<AtomicBool>>,
     /// Notification channel for pushing warnings/info to the frontend.
     pub notify_tx: Option<NotificationSender>,
+    /// Optional run ID if already started (used by actor).
+    pub run_id: Option<i64>,
 }
 
 /// Live progress information updated during indexing.
@@ -134,8 +136,48 @@ fn notify_info(config: &IndexConfig, msg: impl Into<String>) {
 }
 
 /// Main entry point: run the full indexing pipeline.
-pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
+pub fn run_index(mut config: IndexConfig) -> Result<IndexReport> {
     let start = Instant::now();
+    
+    // 1. Open database
+    let conn = crate::db::open(&config.db_path)
+        .context("failed to open database")?;
+
+    // 2. Start run record
+    let run_id = if let Some(id) = config.run_id {
+        id
+    } else {
+        let id = db_ops::record_run_start(&conn, config.full)?;
+        config.run_id = Some(id);
+        id
+    };
+
+    let result = run_index_inner(&config, &conn);
+
+    let mut report = match &result {
+        Ok(r) => r.clone(),
+        Err(_) => IndexReport::default(),
+    };
+    report.elapsed_secs = start.elapsed().as_secs_f64();
+
+    // 3. Finish run record
+    let status = match &result {
+        Ok(_) => {
+            if is_cancelled(&config.cancel_flag) { "cancelled" } else { "completed" }
+        }
+        Err(_) => "failed",
+    };
+    
+    let error_msg = result.as_ref().err().map(|e| format!("{e:#}"));
+    db_ops::record_run_finish(&conn, run_id, status, &report, error_msg.as_deref())?;
+
+    result.map(|mut r| {
+        r.elapsed_secs = report.elapsed_secs;
+        r
+    })
+}
+
+fn run_index_inner(config: &IndexConfig, conn: &rusqlite::Connection) -> Result<IndexReport> {
     let mut report = IndexReport::default();
     let cancel_flag = config.cancel_flag.clone();
 
@@ -155,10 +197,6 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
     if let Err(e) = ensure_backup_repo(&config.backup_dir) {
         tracing::warn!("failed to initialize backup git repo: {e}");
     }
-
-    // 1. Open database
-    let conn = crate::db::open(&config.db_path)
-        .context("failed to open database")?;
 
     // 2. Scan filesystem for all sources
     let mut manifest_with_source = Vec::new();
@@ -187,7 +225,7 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
     // Sort combined manifest by kind then path
     manifest_with_source.sort_by(|(_, _, _, a), (_, _, _, b)| a.kind.cmp(&b.kind).then_with(|| a.path.cmp(&b.path)));
 
-    wait_if_paused(&config);
+    wait_if_paused(config);
     if is_cancelled(&cancel_flag) {
         return Ok(report);
     }
@@ -207,7 +245,7 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
             deleted_paths: Vec::new(),
         }
     } else {
-        change::detect_changes(&conn, &manifest)
+        change::detect_changes(conn, &manifest)
             .context("failed to detect changes")?
     };
 
@@ -253,7 +291,7 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
     for (source_name, kind, _, entry, _) in &metadata_files {
         for provider in &providers {
             if provider.can_handle(&entry.kind) {
-                match provider.process_metadata(&conn, entry) {
+                match provider.process_metadata(conn, entry) {
                     Ok(count) => {
                         report.sessions_parsed += count;
                         conn.execute(
@@ -264,13 +302,13 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
                     Err(e) => {
                         let msg = format!("Failed to parse metadata {}: {e}", entry.path.display());
                         tracing::warn!("{msg}");
-                        notify_warn(&config, msg);
+                        notify_warn(config, msg);
                     }
                 }
             }
         }
         update_progress(&config.progress_tx, |p| p.files_done += 1);
-        wait_if_paused(&config);
+        wait_if_paused(config);
         if is_cancelled(&cancel_flag) { return Ok(report); }
     }
 
@@ -289,7 +327,7 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
 
         for provider in &providers {
             if provider.can_handle(&entry.kind) {
-                match provider.process_content(&conn, entry, start_offset) {
+                match provider.process_content(conn, entry, start_offset) {
                     Ok((stats, final_offset)) => {
                         report.messages_processed += stats.messages_processed;
                         report.messages_skipped += stats.messages_skipped;
@@ -304,17 +342,17 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
                         ).ok();
 
                         let actual_prefix = cas_prefix.as_deref().unwrap_or(source_name);
-                        if let Err(e) = backup_source_file(&conn, &entry.path, &config.backup_dir, config.backup_mode, actual_prefix) {
+                        if let Err(e) = backup_source_file(conn, &entry.path, &config.backup_dir, config.backup_mode, actual_prefix) {
                             tracing::warn!("failed to backup {}: {e}", entry.path.display());
                         }
 
-                        change::mark_indexed(&conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, final_offset)?;
+                        change::mark_indexed(conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, final_offset)?;
                         report.files_processed += 1;
                     }
                     Err(e) => {
                         let msg = format!("Failed to process {}: {e:#}", entry.path.display());
                         tracing::warn!("{msg}");
-                        notify_warn(&config, msg);
+                        notify_warn(config, msg);
                     }
                 }
             }
@@ -325,7 +363,7 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
             p.messages_processed = report.messages_processed;
             p.blobs_inserted = report.blobs_inserted;
         });
-        wait_if_paused(&config);
+        wait_if_paused(config);
         if is_cancelled(&cancel_flag) { return Ok(report); }
     }
 
@@ -336,40 +374,39 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
 
     let task_entries: Vec<_> = structured_files.iter().filter(|(_, _, _, e, _)| e.kind == FileKind::TaskJson).map(|(_, _, _, e, _)| e.clone()).collect();
     if !task_entries.is_empty() {
-        if let Ok(count) = structured::parse_tasks(&conn, &task_entries) { report.tasks_parsed = count; }
+        if let Ok(count) = structured::parse_tasks(conn, &task_entries) { report.tasks_parsed = count; }
     }
 
     let facet_entries: Vec<_> = structured_files.iter().filter(|(_, _, _, e, _)| e.kind == FileKind::FacetJson).map(|(_, _, _, e, _)| e.clone()).collect();
     if !facet_entries.is_empty() {
-        if let Ok(count) = structured::parse_facets(&conn, &facet_entries) { report.facets_parsed = count; }
+        if let Ok(count) = structured::parse_facets(conn, &facet_entries) { report.facets_parsed = count; }
     }
 
     if let Some((_, _, _, entry, _)) = structured_files.iter().find(|(_, _, _, e, _)| e.kind == FileKind::StatsCache) {
-        let _ = structured::parse_stats_cache(&conn, &entry.path);
+        let _ = structured::parse_stats_cache(conn, &entry.path);
     }
 
     let plan_entries: Vec<_> = structured_files.iter().filter(|(_, _, _, e, _)| e.kind == FileKind::PlanMarkdown).map(|(_, _, _, e, _)| e.clone()).collect();
     if !plan_entries.is_empty() {
-        if let Ok(count) = structured::parse_plans(&conn, &plan_entries) { report.plans_parsed = count; }
+        if let Ok(count) = structured::parse_plans(conn, &plan_entries) { report.plans_parsed = count; }
     }
 
     if let Some((_, _, _, entry, _)) = structured_files.iter().find(|(_, _, _, e, _)| e.kind == FileKind::HistoryJsonl) {
-        if let Ok(count) = structured::parse_history(&conn, &entry.path) { report.history_entries = count; }
+        if let Ok(count) = structured::parse_history(conn, &entry.path) { report.history_entries = count; }
     }
 
     for (_, _, _, entry, _) in structured_files {
-        change::mark_indexed(&conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, entry.size_bytes)?;
+        change::mark_indexed(conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, entry.size_bytes)?;
         report.files_processed += 1;
     }
 
-    report.elapsed_secs = start.elapsed().as_secs_f64();
     update_progress(&config.progress_tx, |p| {
         p.phase = "Done".to_string();
         p.messages_processed = report.messages_processed;
         p.blobs_inserted = report.blobs_inserted;
     });
 
-    notify_info(&config, format!("Indexing complete: {} sessions, {} messages in {:.1}s", report.sessions_parsed, report.messages_processed, report.elapsed_secs));
+    notify_info(config, format!("Indexing complete: {} sessions, {} messages", report.sessions_parsed, report.messages_processed));
     Ok(report)
 }
 

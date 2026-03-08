@@ -267,6 +267,22 @@ export interface IndexerStatusResponse {
   outdated_count: number
 }
 
+export interface IndexRun {
+  id: number
+  started_at: string
+  finished_at: string | null
+  status: string
+  is_full: boolean
+  files_scanned: number
+  files_processed: number
+  files_unchanged: number
+  sessions_parsed: number
+  messages_processed: number
+  blobs_inserted: number
+  errors: number
+  error_message: string | null
+}
+
 // Enricher types
 
 export type EnricherStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'

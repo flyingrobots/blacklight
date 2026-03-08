@@ -566,6 +566,7 @@ fn test_realistic_multi_session_index() {
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     })
     .unwrap();
 
@@ -885,6 +886,7 @@ fn test_incremental_index() {
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     })
     .unwrap();
     assert!(r1.files_processed > 0);
@@ -903,6 +905,7 @@ fn test_incremental_index() {
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     })
     .unwrap();
     assert_eq!(r2.files_processed, 0, "second run should process 0 files");
@@ -950,6 +953,7 @@ fn test_fts_search_after_indexing() {
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     })
     .unwrap();
     assert_eq!(report.plans_parsed, 1);
@@ -1008,6 +1012,7 @@ fn test_full_reindex() {
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     })
     .unwrap();
     assert!(r1.files_processed > 0);
@@ -1025,6 +1030,7 @@ fn test_full_reindex() {
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     })
     .unwrap();
     assert!(
@@ -1076,6 +1082,7 @@ fn test_summary_first_in_jsonl() {
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     })
     .unwrap();
 

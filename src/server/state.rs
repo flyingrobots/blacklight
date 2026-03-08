@@ -182,13 +182,14 @@ pub enum IndexerCommand {
 }
 
 /// Shared indexer state broadcast to API handlers.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[derive(Clone, Debug, Default, Serialize, TS)]
 #[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct IndexerState {
     pub status: IndexerStatus,
     pub progress: IndexProgress,
     pub latest_report: Option<IndexReport>,
     pub error_message: Option<String>,
+    pub run_id: Option<i64>,
 }
 
 /// Shared application state passed to all axum handlers.

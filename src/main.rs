@@ -240,6 +240,7 @@ fn run_index(
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,
+        run_id: None,
     }) {
         Ok(report) => print!("{report}"),
         Err(e) => {

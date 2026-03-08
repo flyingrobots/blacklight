@@ -382,3 +382,22 @@ pub struct MigrationStatusResponse {
     pub error_message: Option<String>,
     pub pending_count: i64,
 }
+
+/// A record of an indexing run.
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
+pub struct IndexRun {
+    pub id: i64,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub status: String,
+    pub is_full: bool,
+    pub files_scanned: i32,
+    pub files_processed: i32,
+    pub files_unchanged: i32,
+    pub sessions_parsed: i32,
+    pub messages_processed: i32,
+    pub blobs_inserted: i32,
+    pub errors: i32,
+    pub error_message: Option<String>,
+}

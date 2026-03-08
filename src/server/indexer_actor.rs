@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::indexer::{IndexConfig, IndexProgress};
 use crate::notifications::{self, NotificationLevel};
@@ -66,12 +66,24 @@ impl IndexerActor {
         self.cancel_flag.store(false, Ordering::Relaxed);
         self.pause_flag.store(false, Ordering::Relaxed);
 
+        // Pre-record run in DB to get an ID
+        let run_id = match self.app_state.db.call(move |conn| {
+            crate::indexer::db_ops::record_run_start(conn, full)
+        }).await {
+            Ok(id) => Some(id),
+            Err(e) => {
+                error!("Failed to record run start: {e:#}");
+                None
+            }
+        };
+
         // Reset state
         self.state_tx.send_modify(|s| {
             s.status = IndexerStatus::Running;
             s.progress = IndexProgress::default();
             s.latest_report = None;
             s.error_message = None;
+            s.run_id = run_id;
         });
 
         let state_tx = self.state_tx.clone();
@@ -108,6 +120,7 @@ impl IndexerActor {
                 cancel_flag: Some(cancel_flag.clone()),
                 pause_flag: Some(pause_flag),
                 notify_tx: Some(notify_tx.clone()),
+                run_id,
             };
 
             let result = crate::indexer::run_index(config);

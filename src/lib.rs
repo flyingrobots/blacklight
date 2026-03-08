@@ -15,6 +15,7 @@ pub const ENRICH_VERSION: i32 = 1;
 
 #[cfg(test)]
 mod tests {
+    use crate::server::responses::*;
     use crate::server::state::*;
     use crate::indexer::{IndexProgress, IndexReport};
     use crate::enrich::EnrichReport;
@@ -34,6 +35,7 @@ mod tests {
         IndexerState::export().expect("failed to export IndexerState");
         IndexProgress::export().expect("failed to export IndexProgress");
         IndexReport::export().expect("failed to export IndexReport");
+        IndexRun::export().expect("failed to export IndexRun");
         EnricherStatusResponse::export().expect("failed to export EnricherStatusResponse");
         EnrichReport::export().expect("failed to export EnrichReport");
         MigrationStatusResponse::export().expect("failed to export MigrationStatusResponse");

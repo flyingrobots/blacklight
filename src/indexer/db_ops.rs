@@ -286,6 +286,55 @@ pub fn record_backup(
     Ok(())
 }
 
+/// Record the start of an indexing run. Returns the run ID.
+pub fn record_run_start(conn: &Connection, is_full: bool) -> Result<i64> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO index_runs (started_at, status, is_full) VALUES (?1, 'running', ?2)",
+        params![now, if is_full { 1 } else { 0 }],
+    ).context("failed to record run start")?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Record the completion of an indexing run.
+pub fn record_run_finish(
+    conn: &Connection,
+    run_id: i64,
+    status: &str,
+    report: &crate::indexer::IndexReport,
+    error_msg: Option<&str>,
+) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE index_runs SET 
+            finished_at = ?1,
+            status = ?2,
+            files_scanned = ?3,
+            files_processed = ?4,
+            files_unchanged = ?5,
+            sessions_parsed = ?6,
+            messages_processed = ?7,
+            blobs_inserted = ?8,
+            errors = ?9,
+            error_message = ?10
+         WHERE id = ?11",
+        params![
+            now,
+            status,
+            report.files_processed + report.files_unchanged, // total scanned
+            report.files_processed,
+            report.files_unchanged,
+            report.sessions_parsed,
+            report.messages_processed,
+            report.blobs_inserted,
+            report.parse_errors, // error count
+            error_msg,
+            run_id
+        ],
+    ).context("failed to record run finish")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

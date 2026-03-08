@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -6,17 +6,32 @@ use serde::Deserialize;
 use rusqlite::params;
 
 use crate::error::BlacklightError;
+use crate::server::params::SessionListParams;
 use crate::server::responses::IndexerStatusResponse;
 use crate::server::state::{AppState, IndexerCommand};
+use crate::server::queries::indexer;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/indexer/status", get(status))
+        .route("/indexer/runs", get(get_runs))
         .route("/indexer/start", post(start))
         .route("/indexer/stop", post(stop))
         .route("/indexer/pause", post(pause))
         .route("/indexer/resume", post(resume))
         .route("/indexer/logs", get(logs))
+}
+
+async fn get_runs(
+    State(state): State<AppState>,
+    Query(params): Query<SessionListParams>,
+) -> Result<Json<serde_json::Value>, BlacklightError> {
+    let results = state
+        .db
+        .call(move |conn| indexer::list_runs(conn, params.limit, params.offset))
+        .await?;
+
+    Ok(Json(serde_json::to_value(results)?))
 }
 
 async fn logs(
