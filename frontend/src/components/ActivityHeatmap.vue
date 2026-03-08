@@ -2,21 +2,19 @@
   <div class="heatmap-wrapper">
     <div class="heatmap-container" ref="containerRef">
       <svg ref="svgRef"></svg>
-      <div v-if="!data.length" class="empty-state">No activity data available</div>
-      
-      <!-- Tooltip -->
-      <div 
-        v-if="tooltip.visible" 
+      <div v-if="!data.length" class="empty-state">No activity data</div>
+
+      <div
+        v-if="tooltip.visible"
         class="heatmap-tooltip"
         :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
       >
         <div class="tooltip-date">{{ tooltip.date }}</div>
-        <div class="tooltip-total">{{ tooltip.count }} Sessions</div>
-        <div class="tooltip-divider"></div>
-        <div class="tooltip-projects">
+        <div class="tooltip-total">{{ tooltip.count }} sessions</div>
+        <div v-if="tooltip.projects.length" class="tooltip-projects">
           <div v-for="p in tooltip.projects" :key="p.project_slug" class="tooltip-project">
-            <span class="project-name">{{ p.project_slug }}</span>
-            <span class="project-count">{{ p.session_count }}</span>
+            <span>{{ p.project_slug }}</span>
+            <span>{{ p.session_count }}</span>
           </div>
         </div>
       </div>
@@ -38,210 +36,134 @@ const containerRef = ref<HTMLElement | null>(null)
 const svgRef = ref<SVGSVGElement | null>(null)
 
 const tooltip = reactive({
-  visible: false,
-  x: 0,
-  y: 0,
-  date: '',
-  count: 0,
-  projects: [] as DailyProjectStats[]
+  visible: false, x: 0, y: 0, date: '', count: 0, projects: [] as DailyProjectStats[]
 })
 
 function renderHeatmap() {
   if (!svgRef.value || !props.data.length) return
 
   const data = props.data.map(d => ({
-    date: new Date(d.date),
-    dateStr: d.date,
-    count: d.session_count || 0
+    date: new Date(d.date), dateStr: d.date, count: d.session_count || 0
   })).sort((a, b) => a.date.getTime() - b.date.getTime())
 
   const width = containerRef.value?.clientWidth || 800
-  const cellSize = 14
+  const cellSize = 12
   const cellPadding = 3
-  const height = (cellSize + cellPadding) * 7 + 30 
+  const height = (cellSize + cellPadding) * 7 + 28
 
   const svg = d3.select(svgRef.value)
   svg.selectAll('*').remove()
-
-  svg.attr('width', width)
-     .attr('height', height)
-
-  const colorScale = d3.scaleThreshold<number, string>()
-    .domain([1, 2, 5, 10])
-    .range(['var(--bl-bg-3)', 'var(--bl-accent)', 'var(--bl-accent)', 'var(--bl-accent)', 'var(--bl-accent)'])
-    // We will apply opacity manually to the rects instead of using multiple var colors
-    // because interpolating CSS vars in D3 is tricky.
+  svg.attr('width', width).attr('height', height)
 
   const monthFormat = d3.timeFormat('%b')
-
   const firstDate = data[0].date
   const lastDate = data[data.length - 1].date
-  
-  const g = svg.append('g').attr('transform', 'translate(40, 25)')
+  const g = svg.append('g').attr('transform', 'translate(32, 22)')
 
   // Month labels
   const months = d3.timeMonths(d3.timeMonth.offset(firstDate, -1), lastDate)
   g.selectAll('.month-label')
-    .data(months)
-    .enter()
-    .append('text')
+    .data(months).enter().append('text')
     .attr('class', 'month-label')
-    .attr('x', d => {
-      const weekDiff = d3.timeWeek.count(firstDate, d)
-      return weekDiff * (cellSize + cellPadding)
-    })
-    .attr('y', -8)
+    .attr('x', d => d3.timeWeek.count(firstDate, d) * (cellSize + cellPadding))
+    .attr('y', -6)
     .text(d => monthFormat(d))
     .style('font-size', '10px')
-    .style('fill', 'var(--bl-text-2)')
-    .style('font-family', 'var(--bl-font-mono)')
-    .style('font-weight', '600')
+    .style('fill', 'var(--bl-text-3)')
+    .style('font-weight', '500')
 
   // Day labels
-  const days = ['Mon', 'Wed', 'Fri']
   g.selectAll('.day-label')
-    .data(days)
-    .enter()
-    .append('text')
+    .data(['M', 'W', 'F']).enter().append('text')
     .attr('class', 'day-label')
-    .attr('x', -35)
-    .attr('y', (d, i) => (i * 2 + 1) * (cellSize + cellPadding) + cellSize / 2 + 4)
+    .attr('x', -20)
+    .attr('y', (_, i) => (i * 2 + 1) * (cellSize + cellPadding) + cellSize / 2 + 3)
     .text(d => d)
-    .style('font-size', '10px')
-    .style('fill', 'var(--bl-text-2)')
-    .style('font-family', 'var(--bl-font-mono)')
+    .style('font-size', '9px')
+    .style('fill', 'var(--bl-text-3)')
 
   // Cells
   g.selectAll('.day')
-    .data(data)
-    .enter()
-    .append('rect')
+    .data(data).enter().append('rect')
     .attr('class', 'day')
-    .attr('width', cellSize)
-    .attr('height', cellSize)
-    .attr('x', d => {
-      const weekDiff = d3.timeWeek.count(firstDate, d.date)
-      return weekDiff * (cellSize + cellPadding)
-    })
-    .attr('y', d => d.date.getDay() * (cellSize + cellPadding))
+    .attr('width', cellSize).attr('height', cellSize)
     .attr('rx', 2)
-    .attr('ry', 2)
-    .attr('fill', 'var(--bl-accent)')
-    .style('opacity', d => {
-      if (d.count === 0) return 0.1;
-      if (d.count < 2) return 0.3;
-      if (d.count < 5) return 0.5;
-      if (d.count < 10) return 0.8;
-      return 1.0;
+    .attr('x', d => d3.timeWeek.count(firstDate, d.date) * (cellSize + cellPadding))
+    .attr('y', d => d.date.getDay() * (cellSize + cellPadding))
+    .attr('fill', d => {
+      if (d.count === 0) return 'var(--bl-surface-2)'
+      const intensity = Math.min(d.count / 8, 1)
+      return `rgba(93, 204, 203, ${0.15 + intensity * 0.85})`
     })
-    .style('cursor', 'pointer')
     .on('mouseenter', (event, d) => {
-      const projects = props.projectData.filter(p => p.date === d.dateStr)
       tooltip.visible = true
-      tooltip.date = d.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+      tooltip.date = d.date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
       tooltip.count = d.count
-      tooltip.projects = projects
-      
+      tooltip.projects = props.projectData.filter(p => p.date === d.dateStr)
       const rect = event.target.getBoundingClientRect()
-      const containerRect = containerRef.value?.getBoundingClientRect() || { left: 0, top: 0 }
-      
-      tooltip.x = rect.left - containerRect.left + cellSize + 10
-      tooltip.y = rect.top - containerRect.top - 20
+      const cr = containerRef.value?.getBoundingClientRect() || { left: 0, top: 0 }
+      tooltip.x = rect.left - cr.left + cellSize + 8
+      tooltip.y = rect.top - cr.top - 10
     })
-    .on('mouseleave', () => {
-      tooltip.visible = false
-    })
+    .on('mouseleave', () => { tooltip.visible = false })
 }
 
-onMounted(() => {
-  renderHeatmap()
-  window.addEventListener('resize', renderHeatmap)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', renderHeatmap)
-})
-
+onMounted(() => { renderHeatmap(); window.addEventListener('resize', renderHeatmap) })
+onUnmounted(() => window.removeEventListener('resize', renderHeatmap))
 watch(() => [props.data, props.projectData], renderHeatmap, { deep: true })
 </script>
 
 <style scoped>
-.heatmap-wrapper {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-}
+.heatmap-wrapper { width: 100%; }
+
 .heatmap-container {
   position: relative;
-  width: fit-content;
-  background: var(--bl-bg-2);
-  border: 1px solid var(--bl-border);
-  border-radius: var(--bl-radius-sm);
-  padding: 1.5rem 1.5rem 1rem;
+  width: 100%;
+  overflow-x: auto;
 }
-svg {
-  display: block;
-}
+
 .empty-state {
   padding: 2rem;
   text-align: center;
   color: var(--bl-text-3);
-  font-family: var(--bl-font-mono);
-  font-size: var(--bl-text-xs);
+  font-size: var(--bl-text-sm);
 }
 
 .heatmap-tooltip {
   position: absolute;
   z-index: 1000;
-  background: var(--bl-bg-3);
-  border: 1px solid var(--bl-accent);
-  border-radius: var(--bl-radius-sm);
-  padding: 0.75rem;
-  font-family: var(--bl-font-mono);
-  box-shadow: var(--bl-shadow-lg);
+  background: var(--bl-surface-2);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-md);
+  padding: 0.625rem 0.75rem;
+  box-shadow: var(--bl-shadow-md);
   pointer-events: none;
-  min-width: 180px;
+  min-width: 160px;
 }
 
 .tooltip-date {
-  font-size: 10px;
-  color: var(--bl-text-3);
-  text-transform: uppercase;
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text-2);
   margin-bottom: 2px;
 }
 
 .tooltip-total {
-  font-size: 14px;
+  font-size: var(--bl-text-base);
+  font-weight: 600;
   color: var(--bl-text);
-  font-weight: bold;
-  margin-bottom: 8px;
-}
-
-.tooltip-divider {
-  height: 1px;
-  background: var(--bl-border);
-  margin: 8px 0;
+  margin-bottom: 0.375rem;
 }
 
 .tooltip-projects {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  border-top: 1px solid var(--bl-border);
+  padding-top: 0.375rem;
 }
 
 .tooltip-project {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  font-size: 11px;
-}
-
-.project-name {
+  font-size: var(--bl-text-xs);
   color: var(--bl-text-2);
-}
-
-.project-count {
-  color: var(--bl-accent);
-  font-weight: bold;
+  gap: 1rem;
 }
 </style>

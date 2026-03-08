@@ -1,9 +1,11 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
+use std::collections::HashMap;
 
+use crate::db::query_builder::QueryBuilder;
 use crate::server::responses::{
-    FileReference, Paginated, SessionDetail, SessionOutcome, SessionSummary, SessionTag,
-    ToolCallDetail,
+    Paginated, SessionDetail, SessionOutcome, SessionSummary, SessionTag,
+    ToolCallDetail, FileReference,
 };
 
 pub fn list_sessions(
@@ -14,39 +16,7 @@ pub fn list_sessions(
     limit: i64,
     offset: i64,
 ) -> Result<Paginated<SessionSummary>> {
-    let mut where_clauses = Vec::new();
-    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-
-    if let Some(p) = project {
-        where_clauses.push(format!("s.project_slug = ?{}", params_vec.len() + 1));
-        params_vec.push(Box::new(p.to_string()));
-    }
-    if let Some(f) = from {
-        where_clauses.push(format!("s.created_at >= ?{}", params_vec.len() + 1));
-        params_vec.push(Box::new(f.to_string()));
-    }
-    if let Some(t) = to {
-        where_clauses.push(format!("s.created_at <= ?{}", params_vec.len() + 1));
-        params_vec.push(Box::new(t.to_string()));
-    }
-
-    let where_sql = if where_clauses.is_empty() {
-        String::new()
-    } else {
-        format!("WHERE {}", where_clauses.join(" AND "))
-    };
-
-    // Count total
-    let count_sql = format!("SELECT COUNT(*) FROM sessions s {where_sql}");
-    let total: i64 = conn.query_row(
-        &count_sql,
-        rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())),
-        |row| row.get(0),
-    )?;
-
-    // Fetch page — JOIN enrichments unconditionally so we can expose approval_status.
-    // Only use enrichment title in COALESCE when approved.
-    let query_sql = format!(
+    let mut qb = QueryBuilder::new(
         "SELECT s.id, s.project_path, s.project_slug,
                 COALESCE(
                     CASE WHEN e.approval_status = 'approved' THEN e.title END,
@@ -68,66 +38,118 @@ pub fn list_sessions(
                 s.source_name, s.source_kind, s.app_version, s.fingerprint
          FROM sessions s
          LEFT JOIN session_outcomes o ON o.session_id = s.id
-         LEFT JOIN session_enrichments e ON e.session_id = s.id
-         {where_sql}
-         ORDER BY s.modified_at DESC
-         LIMIT ?{} OFFSET ?{}",
-        params_vec.len() + 1,
-        params_vec.len() + 2
+         LEFT JOIN session_enrichments e ON e.session_id = s.id"
     );
-    params_vec.push(Box::new(limit));
-    params_vec.push(Box::new(offset));
 
-    let mut tag_stmt = conn.prepare(
-        "SELECT tag, confidence FROM session_tags WHERE session_id = ?1 ORDER BY confidence DESC",
+    if let Some(p) = project {
+        qb = qb.r#where("s.project_slug = ?", Box::new(p.to_string()));
+    }
+    if let Some(f) = from {
+        qb = qb.r#where("s.created_at >= ?", Box::new(f.to_string()));
+    }
+    if let Some(t) = to {
+        qb = qb.r#where("s.created_at <= ?", Box::new(t.to_string()));
+    }
+
+    // 1. Get total count
+    let mut count_sql = "SELECT COUNT(*) FROM sessions s".to_string();
+    let mut count_params: Vec<Box<dyn rusqlite::ToSql + Send>> = Vec::new();
+    let mut where_clauses = Vec::new();
+    if let Some(p) = project {
+        where_clauses.push(format!("s.project_slug = ?{}", count_params.len() + 1));
+        count_params.push(Box::new(p.to_string()));
+    }
+    if let Some(f) = from {
+        where_clauses.push(format!("s.created_at >= ?{}", count_params.len() + 1));
+        count_params.push(Box::new(f.to_string()));
+    }
+    if let Some(t) = to {
+        where_clauses.push(format!("s.created_at <= ?{}", count_params.len() + 1));
+        count_params.push(Box::new(t.to_string()));
+    }
+    if !where_clauses.is_empty() {
+        count_sql.push_str(" WHERE ");
+        count_sql.push_str(&where_clauses.join(" AND "));
+    }
+
+    let total: i64 = conn.query_row(
+        &count_sql,
+        rusqlite::params_from_iter(count_params.iter().map(|p| p.as_ref())),
+        |row| row.get(0),
     )?;
 
-    let mut stmt = conn.prepare(&query_sql)?;
-    let rows: Vec<_> = stmt
-        .query_map(
-            rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())),
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<i64>>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, String>(7)?,
-                    row.get::<_, Option<String>>(8)?,
-                    row.get::<_, Option<String>>(9)?,
-                    row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
-                    row.get::<_, Option<String>>(11)?,
-                    row.get::<_, Option<String>>(12)?,
-                    row.get::<_, Option<String>>(13)?,
-                    row.get::<_, Option<String>>(14)?,
-                    row.get::<_, Option<String>>(15)?,
-                    row.get::<_, Option<String>>(16)?,
-                    row.get::<_, Option<String>>(17)?,
-                    row.get::<_, Option<String>>(18)?,
-                    row.get::<_, Option<String>>(19)?,
-                ))
-            },
-        )?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+    // 2. Fetch sessions
+    let (sql, params) = qb.order_by("s.modified_at DESC")
+        .limit(limit)
+        .offset(offset)
+        .build_with_limit();
 
-    let mut items = Vec::with_capacity(rows.len());
+    let mut stmt = conn.prepare(&sql)?;
+    let session_rows = stmt.query_map(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())), |row| {
+        Ok((
+            row.get::<_, String>(0)?, // id
+            row.get::<_, String>(1)?, // project_path
+            row.get::<_, String>(2)?, // project_slug
+            row.get::<_, Option<String>>(3)?, // first_prompt
+            row.get::<_, Option<String>>(4)?, // summary
+            row.get::<_, Option<i64>>(5)?, // message_count
+            row.get::<_, String>(6)?, // created_at
+            row.get::<_, String>(7)?, // modified_at
+            row.get::<_, Option<String>>(8)?, // git_branch
+            row.get::<_, Option<String>>(9)?, // claude_version
+            row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0, // is_sidechain
+            row.get::<_, Option<String>>(11)?, // outcome
+            row.get::<_, Option<String>>(12)?, // brief_summary
+            row.get::<_, Option<String>>(13)?, // enrichment_title
+            row.get::<_, Option<String>>(14)?, // enrichment_summary
+            row.get::<_, Option<String>>(15)?, // approval_status
+            row.get::<_, Option<String>>(16)?, // source_name
+            row.get::<_, Option<String>>(17)?, // source_kind
+            row.get::<_, Option<String>>(18)?, // app_version
+            row.get::<_, Option<String>>(19)?, // fingerprint
+        ))
+    })?.collect::<std::result::Result<Vec<_>, _>>()?;
+
+    if session_rows.is_empty() {
+        return Ok(Paginated {
+            items: vec![],
+            total,
+            limit, offset,
+        });
+    }
+
+    let session_ids: Vec<String> = session_rows.iter().map(|(id, ..)| id.clone()).collect();
+    let id_placeholders = session_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect::<Vec<_>>().join(",");
+
+    // 3. Fetch tags for ALL sessions in one go
+    let tag_sql = format!(
+        "SELECT session_id, tag, confidence FROM session_tags WHERE session_id IN ({}) ORDER BY confidence DESC",
+        id_placeholders
+    );
+    let mut tag_stmt = conn.prepare(&tag_sql)?;
+    let tag_rows = tag_stmt.query_map(rusqlite::params_from_iter(session_ids), |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            SessionTag {
+                tag: row.get(1)?,
+                confidence: row.get(2)?,
+            }
+        ))
+    })?.collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let mut tags_by_session: HashMap<String, Vec<SessionTag>> = HashMap::new();
+    for (sid, tag) in tag_rows {
+        tags_by_session.entry(sid).or_default().push(tag);
+    }
+
+    // 4. Assemble
+    let mut items = Vec::with_capacity(session_rows.len());
     for (id, project_path, project_slug, first_prompt, summary, message_count,
          created_at, modified_at, git_branch, claude_version, is_sidechain,
          outcome, brief_summary, enrichment_title, enrichment_summary, approval_status,
-         source_name, source_kind, app_version, fingerprint) in rows
+         source_name, source_kind, app_version, fingerprint) in session_rows
     {
-        let tags = tag_stmt
-            .query_map(params![id], |row| {
-                Ok(SessionTag {
-                    tag: row.get(0)?,
-                    confidence: row.get(1)?,
-                })
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-
+        let tags = tags_by_session.remove(&id).unwrap_or_default();
         items.push(SessionSummary {
             id, project_path, project_slug, first_prompt, summary, message_count,
             created_at, modified_at, git_branch, claude_version, is_sidechain,
@@ -188,50 +210,46 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                 None
             };
 
-            Ok((
-                SessionDetail {
-                    id: row.get(0)?,
-                    project_path: row.get(1)?,
-                    project_slug: row.get(2)?,
-                    first_prompt: row.get(3)?,
-                    summary: row.get(4)?,
-                    message_count: row.get(5)?,
-                    created_at: row.get(6)?,
-                    modified_at: row.get(7)?,
-                    git_branch: row.get(8)?,
-                    claude_version: row.get(9)?,
-                    is_sidechain: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
-                    outcome,
-                    enrichment_title: row.get(18)?,
-                    enrichment_summary: row.get(19)?,
-                    approval_status: row.get(20)?,
-                    tags: Vec::new(), // filled below
-                    source_name: row.get(21)?,
-                    source_kind: row.get(22)?,
-                    app_version: row.get(23)?,
-                    fingerprint: row.get(24)?,
-                },
-                row.get::<_, String>(0)?, // id again for tag lookup
-            ))
+            Ok(SessionDetail {
+                id: row.get(0)?,
+                project_path: row.get(1)?,
+                project_slug: row.get(2)?,
+                first_prompt: row.get(3)?,
+                summary: row.get(4)?,
+                message_count: row.get(5)?,
+                created_at: row.get(6)?,
+                modified_at: row.get(7)?,
+                git_branch: row.get(8)?,
+                claude_version: row.get(9)?,
+                is_sidechain: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
+                outcome,
+                enrichment_title: row.get(18)?,
+                enrichment_summary: row.get(19)?,
+                approval_status: row.get(20)?,
+                tags: Vec::new(), // filled below
+                source_name: row.get(21)?,
+                source_kind: row.get(22)?,
+                app_version: row.get(23)?,
+                fingerprint: row.get(24)?,
+            })
         })
         .optional()?;
 
-    match result {
-        Some((mut detail, sid)) => {
-            let mut tag_stmt = conn.prepare(
-                "SELECT tag, confidence FROM session_tags WHERE session_id = ?1 ORDER BY confidence DESC",
-            )?;
-            detail.tags = tag_stmt
-                .query_map(params![sid], |row| {
-                    Ok(SessionTag {
-                        tag: row.get(0)?,
-                        confidence: row.get(1)?,
-                    })
-                })?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            Ok(Some(detail))
-        }
-        None => Ok(None),
+    if let Some(mut detail) = result {
+        let mut tag_stmt = conn.prepare(
+            "SELECT tag, confidence FROM session_tags WHERE session_id = ?1 ORDER BY confidence DESC",
+        )?;
+        detail.tags = tag_stmt
+            .query_map(params![id], |row| {
+                Ok(SessionTag {
+                    tag: row.get(0)?,
+                    confidence: row.get(1)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(Some(detail))
+    } else {
+        Ok(None)
     }
 }
 

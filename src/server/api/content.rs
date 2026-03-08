@@ -2,7 +2,7 @@ use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::state::AppState;
 
 pub fn routes() -> Router<AppState> {
@@ -12,7 +12,7 @@ pub fn routes() -> Router<AppState> {
 async fn get_content(
     State(state): State<AppState>,
     Path(hash): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| crate::content::get_blob(conn, &hash))
@@ -25,6 +25,7 @@ async fn get_content(
             "size": blob.size,
             "kind": blob.kind,
         }))),
-        None => Err(AppError::not_found("blob not found")),
+        None => Err(BlacklightError::NotFound("blob not found".to_string())),
     }
 }
+

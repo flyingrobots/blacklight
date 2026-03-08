@@ -1,6 +1,6 @@
 pub mod api;
 mod embedded;
-pub mod errors;
+mod indexer_actor;
 pub mod params;
 pub mod queries;
 pub mod responses;
@@ -11,10 +11,12 @@ pub mod state;
 use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
+use tokio::sync::{mpsc, watch};
 
 use crate::config::BlacklightConfig;
 use crate::notifications;
 use state::{AppState, DbPool, EnricherState, IndexerState, MigrationState};
+use indexer_actor::IndexerActor;
 
 /// Start the web server on the given port.
 pub async fn start_server(
@@ -24,15 +26,23 @@ pub async fn start_server(
     config: &BlacklightConfig,
 ) -> Result<()> {
     let pool = DbPool::new(db_path, 4)?;
+    
+    let (indexer_tx, indexer_rx) = mpsc::channel(32);
+    let (state_tx, state_rx) = watch::channel(IndexerState::default());
+
     let state = AppState {
         db: Arc::new(pool),
         config: Arc::new(config.clone()),
-        indexer: Arc::new(tokio::sync::Mutex::new(IndexerState::default())),
+        indexer: state_rx,
+        indexer_tx,
         enricher: Arc::new(tokio::sync::Mutex::new(EnricherState::default())),
         migration: Arc::new(tokio::sync::Mutex::new(MigrationState::default())),
         scheduler: Arc::new(tokio::sync::Mutex::new(None)),
         notifications: notifications::create_channel(),
     };
+
+    // Spawn the Indexer Actor
+    IndexerActor::spawn(state.clone(), indexer_rx, state_tx);
 
     // Spawn the background scheduler
     let handle = scheduler::spawn_scheduler(state.clone());

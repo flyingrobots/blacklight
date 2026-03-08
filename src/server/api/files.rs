@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::params::FileQueryParams;
 use crate::server::queries::files;
 use crate::server::state::AppState;
@@ -14,7 +14,7 @@ pub fn routes() -> Router<AppState> {
 async fn get_files(
     State(state): State<AppState>,
     Query(params): Query<FileQueryParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| {
@@ -30,3 +30,4 @@ async fn get_files(
 
     Ok(Json(serde_json::to_value(result)?))
 }
+

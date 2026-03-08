@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::queries::storage;
 use crate::server::state::AppState;
 
@@ -12,7 +12,7 @@ pub fn routes() -> Router<AppState> {
 
 async fn get_storage(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(storage::get_storage_overview)

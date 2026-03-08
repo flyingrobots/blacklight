@@ -227,7 +227,7 @@ fn run_index(
         full,
         verbose,
         skip_dirs,
-        progress: None,
+        progress_tx: None,
         cancel_flag: None,
         pause_flag: None,
         notify_tx: None,

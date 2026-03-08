@@ -3,7 +3,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::responses::ScheduleConfigResponse;
 use crate::server::state::AppState;
 
@@ -15,7 +15,7 @@ pub fn routes() -> Router<AppState> {
 
 async fn get_config(
     State(state): State<AppState>,
-) -> Result<Json<ScheduleConfigResponse>, AppError> {
+) -> Result<Json<ScheduleConfigResponse>, BlacklightError> {
     let config = state
         .db
         .call(|conn| {
@@ -52,7 +52,7 @@ struct UpdateParams {
 async fn update_config(
     State(state): State<AppState>,
     Json(params): Json<UpdateParams>,
-) -> Result<Json<ScheduleConfigResponse>, AppError> {
+) -> Result<Json<ScheduleConfigResponse>, BlacklightError> {
     let config = state
         .db
         .call(move |conn| {
@@ -109,3 +109,4 @@ async fn update_config(
 
     Ok(Json(config))
 }
+

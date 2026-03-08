@@ -1,86 +1,62 @@
 <template>
   <div class="sessions-view">
-    <h2>Sessions</h2>
+    <div class="sessions-header">
+      <h1>Sessions</h1>
+      <span class="total-count" v-if="total">{{ total }} total</span>
+    </div>
 
     <div class="filters">
       <input
         v-model="projectFilter"
         placeholder="Filter by project..."
-        class="input search-input"
+        class="filter-input"
         @input="debouncedFetch"
       />
-      <input
-        v-model="fromDate"
-        type="date"
-        class="input"
-        @change="fetchSessions"
-      />
-      <input
-        v-model="toDate"
-        type="date"
-        class="input"
-        @change="fetchSessions"
-      />
+      <input v-model="fromDate" type="date" class="date-input" @change="fetchSessions" />
+      <input v-model="toDate" type="date" class="date-input" @change="fetchSessions" />
     </div>
 
-    <div v-if="loading" class="loading">Loading...</div>
-    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-if="loading" class="loading-state"><div class="spinner"></div></div>
+
     <template v-else>
-      <div class="meta">
-        Showing {{ sessions.length }} of {{ total }} sessions
-        <span class="nav-hint">[j/k to navigate, enter to open]</span>
-      </div>
-      <div class="session-list">
+      <div v-if="sessions.length" class="session-list">
         <SessionCard
-          v-for="(session, index) in sessions"
+          v-for="session in sessions"
           :key="session.id"
           :session="session"
-          :data-nav-index="index"
-          :class="{ 'selected': selectedIndex === index }"
         />
       </div>
+      <div v-else class="empty-state">No sessions found.</div>
+
       <div class="pagination" v-if="total > limit">
-        <button :disabled="offset === 0" @click="prevPage" class="btn">Previous</button>
-        <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
-        <button :disabled="offset + limit >= total" @click="nextPage" class="btn">Next</button>
+        <button :disabled="offset === 0" @click="prevPage" class="page-btn">Previous</button>
+        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+        <button :disabled="offset + limit >= total" @click="nextPage" class="page-btn">Next</button>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { api } from '@/api/client'
 import type { SessionSummary } from '@/types'
 import SessionCard from '@/components/SessionCard.vue'
-import { useKeyboardNavigation } from '@/composables/useKeyboardNavigation'
 
-const router = useRouter()
+const route = useRoute()
 const sessions = ref<SessionSummary[]>([])
 const total = ref(0)
-const limit = ref(20)
+const limit = ref(30)
 const offset = ref(0)
 const loading = ref(true)
-const error = ref('')
 const projectFilter = ref('')
 const fromDate = ref('')
 const toDate = ref('')
 
 let debounceTimer: ReturnType<typeof setTimeout>
-
 const currentPage = computed(() => Math.floor(offset.value / limit.value) + 1)
 const totalPages = computed(() => Math.ceil(total.value / limit.value))
-
-const { selectedIndex } = useKeyboardNavigation(
-  computed(() => sessions.value.length) as any,
-  (index) => {
-    const session = sessions.value[index]
-    if (session) {
-      router.push(`/sessions/${session.id}`)
-    }
-  }
-)
 
 function debouncedFetch() {
   clearTimeout(debounceTimer)
@@ -89,7 +65,6 @@ function debouncedFetch() {
 
 async function fetchSessions() {
   loading.value = true
-  error.value = ''
   try {
     const result = await api.sessions.list({
       project: projectFilter.value || undefined,
@@ -100,63 +75,105 @@ async function fetchSessions() {
     })
     sessions.value = result.items
     total.value = result.total
-    // Reset selection on fetch
-    selectedIndex.value = -1
   } catch (e: any) {
-    error.value = e.message
+    console.error(e)
   } finally {
     loading.value = false
   }
 }
 
-function prevPage() {
-  offset.value = Math.max(0, offset.value - limit.value)
-  fetchSessions()
-}
+function prevPage() { offset.value = Math.max(0, offset.value - limit.value); fetchSessions() }
+function nextPage() { offset.value += limit.value; fetchSessions() }
 
-function nextPage() {
-  offset.value += limit.value
+onMounted(() => {
+  const q = route.query.project
+  if (q && typeof q === 'string') projectFilter.value = q
   fetchSessions()
-}
-
-onMounted(fetchSessions)
+})
 </script>
 
 <style scoped>
-.sessions-view h2 { margin-bottom: 1.5rem; }
+.sessions-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sessions-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.sessions-header h1 {
+  font-size: var(--bl-text-xl);
+}
+
+.total-count {
+  font-size: var(--bl-text-sm);
+  color: var(--bl-text-2);
+}
+
 .filters {
   display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
-.input {
-  background: var(--bl-bg-2);
+
+.filter-input {
+  flex: 0 1 260px;
+  padding: 0.5rem 0.75rem;
+  background: var(--bl-surface);
   border: 1px solid var(--bl-border);
   border-radius: var(--bl-radius-md);
-  padding: 0.5rem 0.75rem;
+  font-size: var(--bl-text-sm);
   color: var(--bl-text);
-  font-size: var(--bl-text-md);
-  font-family: var(--bl-font-mono);
-}
-.input:focus { outline: none; border-color: var(--bl-accent); }
-.meta { 
-  color: var(--bl-text-2); 
-  font-size: var(--bl-text-md); 
-  margin-bottom: 1rem;
-  display: flex;
-  justify-content: space-between;
-}
-.nav-hint {
-  font-family: var(--bl-font-mono);
-  font-size: var(--bl-text-xs);
-  opacity: 0.6;
-}
-.session-list { display: flex; flex-direction: column; gap: 0.75rem; }
-
-/* Keyboard Selection Style */
-.session-list :deep(.session-card.selected) {
   outline: none;
+}
+
+.filter-input:focus { border-color: var(--bl-accent); }
+
+.date-input {
+  padding: 0.5rem 0.625rem;
+  background: var(--bl-surface);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-md);
+  font-size: var(--bl-text-xs);
+  color: var(--bl-text);
+  color-scheme: dark;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--bl-border);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-lg);
+  overflow: hidden;
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--bl-border);
+  border-top-color: var(--bl-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--bl-text-2);
 }
 
 .pagination {
@@ -164,20 +181,24 @@ onMounted(fetchSessions)
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  margin-top: 1.5rem;
+  margin-top: 0.5rem;
 }
-.page-info { color: var(--bl-text-2); font-size: var(--bl-text-md); font-family: var(--bl-font-mono); }
-.btn {
-  background: var(--bl-bg-3);
+
+.page-btn {
+  padding: 0.375rem 0.875rem;
+  background: var(--bl-surface-2);
   border: 1px solid var(--bl-border);
   border-radius: var(--bl-radius-md);
-  padding: 0.5rem 1rem;
   color: var(--bl-text);
+  font-size: var(--bl-text-sm);
   cursor: pointer;
-  font-family: var(--bl-font-mono);
 }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn:hover:not(:disabled) { border-color: var(--bl-accent); }
-.loading, .error { padding: 2rem; text-align: center; }
-.error { color: var(--bl-danger); }
+
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-btn:hover:not(:disabled) { border-color: var(--bl-text-3); }
+
+.page-info {
+  font-size: var(--bl-text-sm);
+  color: var(--bl-text-2);
+}
 </style>

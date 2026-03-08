@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use futures::stream::{self, StreamExt};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -54,7 +55,8 @@ fn push_log(log: &Option<Arc<Mutex<Vec<String>>>>, msg: String) {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct EnrichReport {
     pub enriched: usize,
     pub skipped: usize,

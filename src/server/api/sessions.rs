@@ -4,7 +4,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::params::{MessageListParams, SessionListParams};
 use crate::server::queries::{messages, sessions};
 use crate::server::state::AppState;
@@ -22,7 +22,7 @@ pub fn routes() -> Router<AppState> {
 async fn list_sessions(
     State(state): State<AppState>,
     Query(params): Query<SessionListParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| {
@@ -43,7 +43,7 @@ async fn list_sessions(
 async fn get_session(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| sessions::get_session(conn, &id))
@@ -51,7 +51,7 @@ async fn get_session(
 
     match result {
         Some(session) => Ok(Json(serde_json::to_value(session)?)),
-        None => Err(AppError::not_found("session not found")),
+        None => Err(BlacklightError::NotFound("session not found".to_string())),
     }
 }
 
@@ -59,7 +59,7 @@ async fn get_messages(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Query(params): Query<MessageListParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| messages::get_messages(conn, &id, params.limit, params.offset))
@@ -71,7 +71,7 @@ async fn get_messages(
 async fn get_tools(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| sessions::get_session_tools(conn, &id))
@@ -83,7 +83,7 @@ async fn get_tools(
 async fn get_files(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| sessions::get_session_files(conn, &id))
@@ -95,7 +95,7 @@ async fn get_files(
 async fn get_raw(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<impl IntoResponse, BlacklightError> {
     // 1. Must find a backup in CAS
     let backup_info = state
         .db
@@ -111,7 +111,7 @@ async fn get_raw(
         })
         .await?;
 
-    let hash = backup_info.ok_or_else(|| AppError::not_found("session not backed up in CAS"))?;
+    let hash = backup_info.ok_or_else(|| BlacklightError::NotFound("session not backed up in CAS".to_string()))?;
     let backup_dir = state.config.resolved_backup_dir();
 
     match state.config.backup_mode {
@@ -119,7 +119,7 @@ async fn get_raw(
             let path = backup_dir.join(&hash);
             let content = tokio::fs::read_to_string(path)
                 .await
-                .map_err(|e| AppError::internal(format!("failed to read CAS backup: {e}")))?;
+                .map_err(|e| BlacklightError::Internal(format!("failed to read CAS backup: {e}")))?;
             Ok((
                 [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
                 content,
@@ -131,17 +131,17 @@ async fn get_raw(
                 .config
                 .resolved_db_path()
                 .parent()
-                .ok_or_else(|| AppError::internal("no db parent"))?
+                .ok_or_else(|| BlacklightError::Internal("no db parent".to_string()))?
                 .join("materialized");
             if !materialized_dir.exists() {
                 std::fs::create_dir_all(&materialized_dir)
-                    .map_err(|e| AppError::internal(format!("failed to create cache: {e}")))?;
+                    .map_err(|e| BlacklightError::Internal(format!("failed to create cache: {e}")))?;
             }
 
             let cache_path = materialized_dir.join(&hash);
             if cache_path.exists() {
                 let content = tokio::fs::read_to_string(cache_path).await.map_err(|e| {
-                    AppError::internal(format!("failed to read materialized cache: {e}"))
+                    BlacklightError::Internal(format!("failed to read materialized cache: {e}"))
                 })?;
                 return Ok((
                     [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
@@ -162,16 +162,16 @@ async fn get_raw(
                 .current_dir(&backup_dir)
                 .output()
                 .await
-                .map_err(|e| AppError::internal(format!("failed to run git cas restore: {e}")))?;
+                .map_err(|e| BlacklightError::Internal(format!("failed to run git cas restore: {e}")))?;
 
             if !output.status.success() {
                 let err = String::from_utf8_lossy(&output.stderr);
-                return Err(AppError::internal(format!("git cas restore failed: {err}")));
+                return Err(BlacklightError::Internal(format!("git cas restore failed: {err}")));
             }
 
             let content = tokio::fs::read_to_string(cache_path)
                 .await
-                .map_err(|e| AppError::internal(format!("failed to read restored file: {e}")))?;
+                .map_err(|e| BlacklightError::Internal(format!("failed to read restored file: {e}")))?;
 
             Ok((
                 [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],

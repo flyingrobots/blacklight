@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::params::DateRangeParams;
 use crate::server::queries::analytics;
 use crate::server::state::AppState;
@@ -23,7 +23,7 @@ pub fn routes() -> Router<AppState> {
 async fn daily_projects(
     State(state): State<AppState>,
     Query(params): Query<DateRangeParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result: Vec<crate::server::responses::DailyProjectStats> = state
         .db
         .call(move |conn| {
@@ -36,7 +36,7 @@ async fn daily_projects(
 
 async fn overview(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let db_path = state.db.db_path().to_string_lossy().to_string();
     let result = state
         .db
@@ -48,7 +48,7 @@ async fn overview(
 
 async fn coverage(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let source_dirs: Vec<_> = state.config.resolved_sources().into_iter().map(|(_, p, _, _)| p).collect();
     let result = state
         .db
@@ -61,7 +61,7 @@ async fn coverage(
 async fn daily(
     State(state): State<AppState>,
     Query(params): Query<DateRangeParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| {
@@ -74,7 +74,7 @@ async fn daily(
 
 async fn models(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(analytics::get_model_usage)
@@ -86,7 +86,7 @@ async fn models(
 async fn tools(
     State(state): State<AppState>,
     Query(params): Query<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let limit = params.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
     let from = params.get("from").and_then(|v| v.as_str()).map(|s| s.to_string());
     let to = params.get("to").and_then(|v| v.as_str()).map(|s| s.to_string());
@@ -102,7 +102,7 @@ async fn tools(
 async fn projects(
     State(state): State<AppState>,
     Query(params): Query<DateRangeParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| analytics::get_project_breakdown(conn, params.from.as_deref(), params.to.as_deref()))
@@ -114,7 +114,7 @@ async fn projects(
 async fn llms(
     State(state): State<AppState>,
     Query(params): Query<DateRangeParams>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| analytics::get_llm_breakdown(conn, params.from.as_deref(), params.to.as_deref()))
@@ -125,7 +125,7 @@ async fn llms(
 
 async fn outcomes(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let result = state
         .db
         .call(analytics::get_outcome_distribution)
@@ -133,3 +133,4 @@ async fn outcomes(
 
     Ok(Json(serde_json::to_value(result)?))
 }
+

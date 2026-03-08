@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::state::{AppState, MigrationStatus};
 
 pub fn routes() -> Router<AppState> {
@@ -12,7 +12,7 @@ pub fn routes() -> Router<AppState> {
         .route("/migration/start", post(start))
 }
 
-async fn status(State(state): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {
+async fn status(State(state): State<AppState>) -> Result<Json<serde_json::Value>, BlacklightError> {
     let guard = state.migration.lock().await;
     let progress = guard.progress.lock().unwrap().clone();
 
@@ -36,11 +36,11 @@ async fn status(State(state): State<AppState>) -> Result<Json<serde_json::Value>
 
 async fn start(
     State(state): State<AppState>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), BlacklightError> {
     let mut guard = state.migration.lock().await;
 
     if guard.status == MigrationStatus::Running {
-        return Err(AppError::bad_request("Migration is already running"));
+        return Err(BlacklightError::Parse("Migration is already running".to_string()));
     }
 
     guard.status = MigrationStatus::Running;
@@ -75,3 +75,4 @@ async fn start(
         Json(serde_json::json!({ "message": "Migration started" })),
     ))
 }
+

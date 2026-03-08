@@ -1,19 +1,15 @@
 <template>
   <router-link :to="`/sessions/${session.id}`" class="session-card">
-    <div class="card-header">
-      <div class="header-left">
-        <span class="project">{{ session.project_slug }}</span>
-        <span v-if="session.source_name" class="source-badge">{{ session.source_kind || 'source' }}: {{ session.source_name }}</span>
-      </div>
-      <span class="date">{{ new Date(session.modified_at).toLocaleDateString() }}</span>
+    <div class="sc-main">
+      <div class="sc-title">{{ displayTitle }}</div>
+      <p v-if="session.enrichment_summary" class="sc-summary">{{ session.enrichment_summary }}</p>
     </div>
-    <div class="prompt" :class="{ faded: !displayText.primary }">{{ displayText.text }}</div>
-    <div v-if="session.enrichment_summary" class="enrichment-summary">{{ session.enrichment_summary }}</div>
-    <div class="card-footer">
-      <span v-if="session.message_count != null && session.message_count > 0" class="meta">{{ session.message_count }} msgs</span>
-      <span v-if="session.git_branch" class="meta branch">{{ session.git_branch }}</span>
-      <span v-if="session.outcome" class="meta outcome">{{ session.outcome }}</span>
-      <span v-for="t in session.tags" :key="t.tag" class="tag-chip">{{ t.tag }}</span>
+    <div class="sc-meta">
+      <span class="sc-project" :style="{ color: projectColor }">{{ session.project_slug }}</span>
+      <span class="sc-date">{{ formatDate(session.modified_at) }}</span>
+      <span v-if="session.message_count" class="sc-stat">{{ session.message_count }} msgs</span>
+      <span v-if="session.git_branch" class="sc-stat">{{ session.git_branch }}</span>
+      <span v-if="session.tags && session.tags.length" class="sc-tag">#{{ session.tags[0].tag }}</span>
     </div>
   </router-link>
 </template>
@@ -24,112 +20,99 @@ import type { SessionSummary } from '@/types'
 
 const props = defineProps<{ session: SessionSummary }>()
 
-const displayText = computed(() => {
-  const s = props.session
-  const truncate = (t: string) => t.length > 120 ? t.slice(0, 120) + '...' : t
-  if (s.enrichment_title) return { text: s.enrichment_title, primary: true }
-  if (s.first_prompt) return { text: truncate(s.first_prompt), primary: true }
-  if (s.brief_summary) return { text: truncate(s.brief_summary), primary: true }
-  if (s.summary) return { text: truncate(s.summary), primary: true }
-  return { text: `${s.message_count ?? 0} messages in ${s.project_slug}`, primary: false }
+const PROJECT_COLORS = ['#5dcccb', '#bc8cff', '#58a6ff', '#f0883e', '#3fb950', '#d29922', '#f85149']
+
+const projectColor = computed(() => {
+  const hash = props.session.project_slug.split('').reduce((a, b) => a + b.charCodeAt(0), 0)
+  return PROJECT_COLORS[hash % PROJECT_COLORS.length]
 })
+
+const displayTitle = computed(() => {
+  if (props.session.enrichment_title) return props.session.enrichment_title
+  if (props.session.first_prompt) return props.session.first_prompt.slice(0, 100)
+  return 'Untitled session'
+})
+
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  const hours = diff / (1000 * 60 * 60)
+  if (hours < 1) return 'just now'
+  if (hours < 24) return `${Math.floor(hours)}h ago`
+  if (hours < 48) return 'yesterday'
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
 </script>
 
 <style scoped>
 .session-card {
-  display: block;
-  background: var(--bl-bg-2);
-  border: 1px solid var(--bl-border);
-  border-radius: var(--bl-radius-sm);
-  padding: 0.75rem 1rem;
-  transition: all 0.15s;
-  text-decoration: none;
-  color: var(--bl-text);
-  position: relative;
-  font-family: var(--bl-font-mono);
-}
-.session-card:hover { 
-  border-color: var(--bl-accent); 
-  background: var(--bl-bg-3);
-  text-decoration: none; 
-}
-
-/* TUI Selection Indicator */
-.session-card.selected::before {
-  content: '>';
-  position: absolute;
-  left: 0.35rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--bl-accent);
-  font-weight: bold;
-}
-.session-card.selected {
-  padding-left: 1.75rem;
-  border-color: var(--bl-accent);
-  background: var(--bl-bg-3);
-  box-shadow: none;
-}
-
-.card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.25rem;
-  opacity: 0.8;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--bl-surface);
+  text-decoration: none;
+  color: var(--bl-text);
+  transition: background 0.1s;
 }
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+
+.session-card:hover {
+  background: var(--bl-surface-2);
+  opacity: 1;
 }
-.source-badge {
-  font-size: 0.625rem;
-  color: var(--bl-text-2);
-  border: 1px solid var(--bl-border);
-  padding: 0 0.375rem;
-  border-radius: var(--bl-radius-sm);
-  text-transform: uppercase;
+
+.sc-main {
+  flex: 1;
+  min-width: 0;
 }
-.project {
-  font-size: var(--bl-text-xs);
-  color: var(--bl-accent);
-  font-weight: bold;
-  text-transform: uppercase;
-}
-.date { font-size: var(--bl-text-xs); color: var(--bl-text-2); }
-.prompt { 
-  font-size: var(--bl-text-md); 
-  line-height: 1.2; 
-  margin-bottom: 0.35rem;
+
+.sc-title {
+  font-size: var(--bl-text-sm);
+  font-weight: 500;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
-.prompt.faded { color: var(--bl-text-2); opacity: 0.6; }
-.enrichment-summary {
+
+.sc-summary {
   font-size: var(--bl-text-xs);
   color: var(--bl-text-2);
-  line-height: 1.2;
-  margin-bottom: 0.35rem;
+  margin-top: 0.25rem;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
-  overflow: hidden;
 }
-.card-footer { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; opacity: 0.7; }
-.meta {
+
+.sc-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-shrink: 0;
   font-size: var(--bl-text-xs);
-  color: var(--bl-text-2);
 }
-.meta.branch { color: var(--bl-purple); }
-.meta.outcome { color: var(--bl-success); border: 1px solid var(--bl-success); padding: 0 4px; border-radius: 2px; }
-.tag-chip {
-  font-size: 0.625rem;
-  background: var(--bl-bg-3);
-  border: 1px solid var(--bl-border);
-  border-radius: 2px;
-  padding: 0 0.4375rem;
-  color: var(--bl-text-2);
+
+.sc-project {
+  font-weight: 600;
+}
+
+.sc-date {
+  color: var(--bl-text-3);
+}
+
+.sc-stat {
+  color: var(--bl-text-3);
+}
+
+.sc-tag {
+  color: var(--bl-c3);
+  font-size: var(--bl-text-2xs);
 }
 </style>

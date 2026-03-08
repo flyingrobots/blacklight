@@ -30,20 +30,17 @@ import ContentBlock from './ContentBlock.vue'
 
 defineProps<{ messages: MessageDetail[] }>()
 
-/** Is this "user" message actually just tool results (not human input)? */
 function isToolResultMessage(msg: MessageDetail): boolean {
   if (msg.type !== 'user') return false
   if (msg.content_blocks.length === 0) return false
   return msg.content_blocks.every(b => b.block_type === 'tool_result')
 }
 
-/** CSS class — tool-result user messages get their own style */
 function effectiveType(msg: MessageDetail): string {
   if (isToolResultMessage(msg)) return 'tool-result'
   return msg.type
 }
 
-/** Display label for the message role */
 function roleLabel(msg: MessageDetail): string {
   if (isToolResultMessage(msg)) return 'Tool Result'
   if (msg.type === 'user') return 'You'
@@ -53,32 +50,41 @@ function roleLabel(msg: MessageDetail): string {
 </script>
 
 <style scoped>
-.message-thread { display: flex; flex-direction: column; gap: 1rem; }
+.message-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .message {
   border: 1px solid var(--bl-border);
   border-radius: var(--bl-radius-lg);
   overflow: hidden;
 }
-.message.user { border-left: 3px solid var(--bl-accent); }
-.message.assistant { border-left: 3px solid var(--bl-success); }
-.message.tool-result { border-left: 3px solid var(--bl-border); opacity: 0.85; }
-.message.system { border-left: 3px solid var(--bl-warning); }
-.message.summary { border-left: 3px solid var(--bl-purple); }
+
+.message.user { border-left: 2px solid var(--bl-accent); }
+.message.assistant { border-left: 2px solid var(--bl-success); }
+.message.tool-result { border-left: 2px solid var(--bl-surface-3); opacity: 0.8; }
+.message.system { border-left: 2px solid var(--bl-warning); }
+.message.summary { border-left: 2px solid var(--bl-purple); }
+
 .message-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 1rem;
-  background: var(--bl-bg-2);
+  gap: 0.625rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--bl-surface);
   border-bottom: 1px solid var(--bl-border);
   font-size: var(--bl-text-xs);
 }
+
 .tool-result .message-header { background: var(--bl-bg); }
-.role { font-weight: 600; }
-.model { color: var(--bl-text-2); }
-.time { color: var(--bl-text-2); }
-.duration { color: var(--bl-text-2); }
-.message-body { padding: 0.75rem 1rem; }
-.empty-msg { color: var(--bl-text-2); font-size: var(--bl-text-sm); font-style: italic; }
+.role { font-weight: 600; color: var(--bl-text); }
+.model { color: var(--bl-text-3); }
+.time { color: var(--bl-text-3); }
+.duration { color: var(--bl-text-3); }
+
+.message-body { padding: 0.625rem 0.75rem; }
+.empty-msg { color: var(--bl-text-3); font-size: var(--bl-text-sm); font-style: italic; }
 .empty { color: var(--bl-text-2); padding: 2rem; text-align: center; }
 </style>

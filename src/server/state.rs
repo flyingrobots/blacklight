@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+use ts_rs::TS;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -68,8 +69,9 @@ impl DbPool {
 }
 
 /// Indexer run status.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub enum IndexerStatus {
     #[default]
     Idle,
@@ -81,8 +83,9 @@ pub enum IndexerStatus {
 }
 
 /// Migration run status.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub enum MigrationStatus {
     #[default]
     Idle,
@@ -91,7 +94,8 @@ pub enum MigrationStatus {
     Failed,
 }
 
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct MigrationProgress {
     pub total_sessions: usize,
     pub backed_up: usize,
@@ -115,47 +119,10 @@ impl Default for MigrationState {
     }
 }
 
-/// Shared indexer state accessible from API handlers.
-pub struct IndexerState {
-    pub status: IndexerStatus,
-    pub progress: Arc<Mutex<IndexProgress>>,
-    pub cancel_flag: Arc<AtomicBool>,
-    pub pause_flag: Arc<AtomicBool>,
-    pub latest_report: Option<IndexReport>,
-    pub error_message: Option<String>,
-    pub log_lines: Arc<Mutex<Vec<String>>>,
-}
-
-impl Default for IndexerState {
-    fn default() -> Self {
-        Self {
-            status: IndexerStatus::Idle,
-            progress: Arc::new(Mutex::new(IndexProgress::default())),
-            cancel_flag: Arc::new(AtomicBool::new(false)),
-            pause_flag: Arc::new(AtomicBool::new(false)),
-            latest_report: None,
-            error_message: None,
-            log_lines: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-}
-
-impl IndexerState {
-    /// Reset for a new run: clear progress, reset cancel flag, set Running.
-    pub fn reset_for_run(&mut self) {
-        self.status = IndexerStatus::Running;
-        self.cancel_flag.store(false, Ordering::Relaxed);
-        self.pause_flag.store(false, Ordering::Relaxed);
-        *self.progress.lock().unwrap() = IndexProgress::default();
-        self.latest_report = None;
-        self.error_message = None;
-        self.log_lines.lock().unwrap().clear();
-    }
-}
-
 /// Enricher run status.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub enum EnricherStatus {
     #[default]
     Idle,
@@ -205,12 +172,32 @@ pub struct SchedulerHandle {
     pub cancel_flag: Arc<AtomicBool>,
 }
 
+/// Indexer control commands.
+#[derive(Debug)]
+pub enum IndexerCommand {
+    Start { full: bool },
+    Stop,
+    Pause,
+    Resume,
+}
+
+/// Shared indexer state broadcast to API handlers.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
+pub struct IndexerState {
+    pub status: IndexerStatus,
+    pub progress: IndexProgress,
+    pub latest_report: Option<IndexReport>,
+    pub error_message: Option<String>,
+}
+
 /// Shared application state passed to all axum handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<DbPool>,
     pub config: Arc<BlacklightConfig>,
-    pub indexer: Arc<tokio::sync::Mutex<IndexerState>>,
+    pub indexer: tokio::sync::watch::Receiver<IndexerState>,
+    pub indexer_tx: tokio::sync::mpsc::Sender<IndexerCommand>,
     pub enricher: Arc<tokio::sync::Mutex<EnricherState>>,
     pub migration: Arc<tokio::sync::Mutex<MigrationState>>,
     pub scheduler: Arc<tokio::sync::Mutex<Option<SchedulerHandle>>>,

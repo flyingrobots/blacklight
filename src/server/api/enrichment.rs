@@ -10,7 +10,7 @@ use axum::extract::Path;
 
 use crate::enrich::EnrichConfig;
 use crate::notifications::{self, NotificationLevel};
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::responses::EnricherStatusResponse;
 use crate::server::state::{AppState, EnricherStatus};
 
@@ -26,7 +26,7 @@ pub fn routes() -> Router<AppState> {
 
 async fn status(
     State(state): State<AppState>,
-) -> Result<Json<EnricherStatusResponse>, AppError> {
+) -> Result<Json<EnricherStatusResponse>, BlacklightError> {
     let guard = state.enricher.lock().await;
 
     let outdated_count = state.db.call(|conn| {
@@ -68,11 +68,11 @@ fn default_concurrency() -> usize {
 async fn start(
     State(state): State<AppState>,
     Json(params): Json<StartParams>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), BlacklightError> {
     let mut guard = state.enricher.lock().await;
 
     if guard.status == EnricherStatus::Running {
-        return Err(AppError::bad_request("Enricher is already running"));
+        return Err(BlacklightError::Parse("Enricher is already running".to_string()));
     }
 
     guard.reset_for_run();
@@ -169,11 +169,11 @@ async fn start(
 
 async fn stop(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let guard = state.enricher.lock().await;
 
     if guard.status != EnricherStatus::Running {
-        return Err(AppError::bad_request("Enricher is not running"));
+        return Err(BlacklightError::Parse("Enricher is not running".to_string()));
     }
 
     guard.cancel_flag.store(true, Ordering::Relaxed);
@@ -183,7 +183,7 @@ async fn stop(
 
 async fn pending_count(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let count = state
         .db
         .call(crate::enrich::pending_review_count)
@@ -194,7 +194,7 @@ async fn pending_count(
 
 async fn logs(
     State(state): State<AppState>,
-) -> Result<Json<Vec<String>>, AppError> {
+) -> Result<Json<Vec<String>>, BlacklightError> {
     let guard = state.enricher.lock().await;
     let lines = guard.log_lines.lock().unwrap().clone();
     Ok(Json(lines))
@@ -204,7 +204,7 @@ async fn logs(
 async fn enrich_single(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+) -> Result<(StatusCode, Json<serde_json::Value>), BlacklightError> {
     let db_path = state.db.db_path().to_path_buf();
     let ollama_url = state.config.enrichment.ollama_url.clone();
     let auto_approve_threshold = state.config.enrichment.auto_approve_threshold;
@@ -252,3 +252,4 @@ async fn enrich_single(
         Json(serde_json::json!({ "message": "Enrichment started", "session_id": session_id })),
     ))
 }
+

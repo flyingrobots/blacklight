@@ -17,42 +17,58 @@
 
 <script setup lang="ts">
 import type { SearchHit } from '@/types'
-
 defineProps<{ hit: SearchHit }>()
 </script>
 
 <style scoped>
 .search-result {
-  background: var(--bl-bg-2);
+  background: var(--bl-surface);
   border: 1px solid var(--bl-border);
-  border-radius: var(--bl-radius-lg);
-  padding: 1rem;
+  border-radius: var(--bl-radius-md);
+  padding: 0.75rem 1rem;
+  transition: border-color 0.15s;
 }
+
+.search-result:hover {
+  border-color: var(--bl-border-2);
+}
+
 .sr-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-  font-size: var(--bl-text-sm);
-}
-.sr-kind {
-  background: var(--bl-bg-3);
-  padding: 0.125rem 0.5rem;
-  border-radius: var(--bl-radius-sm);
+  gap: 0.625rem;
+  margin-bottom: 0.375rem;
   font-size: var(--bl-text-xs);
+}
+
+.sr-kind {
+  background: var(--bl-surface-3);
+  padding: 1px 6px;
+  border-radius: var(--bl-radius-sm);
+  font-size: var(--bl-text-2xs);
   color: var(--bl-text-2);
 }
-.sr-session { font-size: var(--bl-text-sm); }
-.sr-type { color: var(--bl-text-2); font-size: var(--bl-text-xs); }
+
+.sr-session {
+  font-size: var(--bl-text-xs);
+  color: var(--bl-accent);
+}
+
+.sr-type {
+  color: var(--bl-text-3);
+  font-size: var(--bl-text-2xs);
+}
+
 .sr-snippet {
-  font-size: var(--bl-text-md);
+  font-size: var(--bl-text-sm);
   line-height: 1.5;
   color: var(--bl-text-2);
 }
+
 .sr-snippet :deep(mark) {
-  background: rgba(88, 166, 255, 0.25);
+  background: rgba(93, 204, 203, 0.2);
   color: var(--bl-accent);
-  padding: 0.05rem 0.2rem;
+  padding: 0 2px;
   border-radius: 2px;
 }
 </style>

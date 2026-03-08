@@ -6,7 +6,6 @@
 
     <div v-else-if="block.block_type === 'tool_use'" class="tool-use">
       <div class="tool-header">
-        <span class="tool-icon">&#9881;</span>
         <span class="tool-name">{{ block.tool_name }}</span>
         <span v-if="block.tool_use_id" class="tool-id">{{ block.tool_use_id.slice(0, 8) }}</span>
       </div>
@@ -15,7 +14,6 @@
 
     <div v-else-if="block.block_type === 'tool_result'" class="tool-result">
       <div class="tool-header">
-        <span class="tool-icon">&#10003;</span>
         <span class="tool-label">Result</span>
       </div>
       <pre v-if="block.content" class="tool-content">{{ truncate(block.content, 2000) }}</pre>
@@ -35,11 +33,8 @@ import ThinkingBlock from './ThinkingBlock.vue'
 defineProps<{ block: ContentBlockDetail }>()
 
 function formatJson(input: string): string {
-  try {
-    return JSON.stringify(JSON.parse(input), null, 2)
-  } catch {
-    return input
-  }
+  try { return JSON.stringify(JSON.parse(input), null, 2) }
+  catch { return input }
 }
 
 function truncate(text: string, maxLen: number): string {
@@ -49,42 +44,49 @@ function truncate(text: string, maxLen: number): string {
 </script>
 
 <style scoped>
-.content-block { margin-bottom: 0.5rem; }
+.content-block { margin-bottom: 0.375rem; }
 .content-block:last-child { margin-bottom: 0; }
+
 .text-content pre {
   white-space: pre-wrap;
   word-wrap: break-word;
   background: none;
   border: none;
   padding: 0;
-  font-size: var(--bl-text-md);
-  line-height: 1.5;
+  font-size: var(--bl-text-sm);
+  line-height: 1.6;
+  color: var(--bl-text);
 }
+
 .tool-use, .tool-result {
-  background: var(--bl-bg-2);
+  background: var(--bl-surface-2);
   border: 1px solid var(--bl-border);
   border-radius: var(--bl-radius-md);
   overflow: hidden;
 }
+
 .tool-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.375rem 0.75rem;
-  background: var(--bl-bg-3);
-  font-size: var(--bl-text-sm);
+  padding: 0.25rem 0.625rem;
+  background: var(--bl-surface);
+  font-size: var(--bl-text-xs);
+  border-bottom: 1px solid var(--bl-border);
 }
-.tool-icon { opacity: 0.6; }
+
 .tool-name { font-weight: 600; color: var(--bl-accent); }
 .tool-label { font-weight: 600; color: var(--bl-success); }
-.tool-id { color: var(--bl-text-2); font-size: var(--bl-text-xs); }
+.tool-id { color: var(--bl-text-3); font-size: var(--bl-text-2xs); }
+
 .tool-content {
-  padding: 0.5rem 0.75rem;
-  font-size: var(--bl-text-sm);
-  max-height: 400px;
+  padding: 0.375rem 0.625rem;
+  font-size: var(--bl-text-xs);
+  max-height: 350px;
   overflow-y: auto;
   background: none;
   border: none;
   border-radius: 0;
+  color: var(--bl-text-2);
 }
 </style>

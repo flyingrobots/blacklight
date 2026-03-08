@@ -3,9 +3,8 @@ use std::sync::Arc;
 use rusqlite::params;
 
 use crate::enrich::EnrichConfig;
-use crate::indexer::IndexConfig;
 use crate::notifications::{self, NotificationLevel};
-use crate::server::state::{AppState, EnricherStatus, IndexerStatus, SchedulerHandle};
+use crate::server::state::{AppState, EnricherStatus, IndexerCommand, IndexerStatus, SchedulerHandle};
 
 /// Spawn the background scheduler loop. Returns a handle for cancellation.
 pub fn spawn_scheduler(state: AppState) -> SchedulerHandle {
@@ -106,98 +105,12 @@ async fn read_schedule_config(state: &AppState) -> anyhow::Result<ScheduleConfig
 
 async fn run_scheduled_index(state: &AppState) {
     // Skip if already running
-    {
-        let guard = state.indexer.lock().await;
-        if guard.status == IndexerStatus::Running {
-            tracing::info!("scheduler: indexer already running, skipping");
-            return;
-        }
+    if state.indexer.borrow().status == IndexerStatus::Running {
+        tracing::info!("scheduler: indexer already running, skipping");
+        return;
     }
 
-    notifications::notify(
-        &state.notifications,
-        NotificationLevel::Info,
-        "Scheduled indexing started",
-    );
-
-    let mut guard = state.indexer.lock().await;
-    guard.reset_for_run();
-
-    let progress = guard.progress.clone();
-    let cancel_flag = guard.cancel_flag.clone();
-    let pause_flag = guard.pause_flag.clone();
-    let indexer_state = state.indexer.clone();
-    let db_path = state.db.db_path().to_path_buf();
-    let backup_dir = state.config.resolved_backup_dir();
-    let backup_mode = state.config.backup_mode;
-    let notify_tx = state.notifications.clone();
-    let skip_dirs = state.config.indexer.skip_dirs.clone();
-    let mut sources = state.config.resolved_sources();
-
-    // Auto-discover extra sources
-    let extras = crate::indexer::scanner::discover_extra_sources();
-    for extra in extras {
-        if !sources.iter().any(|(_, p, _, _)| p == &extra.1) {
-            sources.push((extra.0, extra.1, extra.2, None));
-        }
-    }
-
-    drop(guard);
-
-    let handle = tokio::task::spawn_blocking(move || {
-        let config = IndexConfig {
-            sources,
-            db_path,
-            backup_dir,
-            backup_mode,
-            full: false,
-            verbose: false,
-            skip_dirs,
-            progress: Some(progress),
-            cancel_flag: Some(cancel_flag.clone()),
-            pause_flag: Some(pause_flag),
-            notify_tx: Some(notify_tx.clone()),
-        };
-
-        let result = crate::indexer::run_index(config);
-
-        let rt = tokio::runtime::Handle::current();
-        rt.block_on(async {
-            let mut guard = indexer_state.lock().await;
-            let was_cancelled = cancel_flag.load(Ordering::Relaxed);
-            match result {
-                Ok(report) => {
-                    if was_cancelled {
-                        guard.status = IndexerStatus::Cancelled;
-                    } else {
-                        guard.status = IndexerStatus::Completed;
-                        notifications::notify(
-                            &notify_tx,
-                            NotificationLevel::Info,
-                            format!(
-                                "Scheduled indexing complete: {} sessions, {} messages",
-                                report.sessions_parsed, report.messages_processed
-                            ),
-                        );
-                    }
-                    guard.latest_report = Some(report);
-                }
-                Err(e) => {
-                    guard.status = IndexerStatus::Failed;
-                    let msg = format!("{e:#}");
-                    guard.error_message = Some(msg.clone());
-                    notifications::notify(
-                        &notify_tx,
-                        NotificationLevel::Error,
-                        format!("Scheduled indexing failed: {msg}"),
-                    );
-                }
-            }
-        });
-    });
-
-    // Wait for indexing to finish before returning
-    let _ = handle.await;
+    let _ = state.indexer_tx.send(IndexerCommand::Start { full: false }).await;
 }
 
 async fn run_scheduled_enrichment(state: &AppState, concurrency: i32) {

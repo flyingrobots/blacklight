@@ -3,14 +3,11 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use std::sync::atomic::Ordering;
 use rusqlite::params;
 
-use crate::indexer::IndexConfig;
-use crate::notifications::{self, NotificationLevel};
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::responses::IndexerStatusResponse;
-use crate::server::state::{AppState, IndexerStatus};
+use crate::server::state::{AppState, IndexerCommand};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -23,16 +20,14 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn logs(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<String>>, AppError> {
-    let guard = state.indexer.lock().await;
-    let lines = guard.log_lines.lock().unwrap().clone();
-    Ok(Json(lines))
+    State(_state): State<AppState>,
+) -> Result<Json<Vec<String>>, BlacklightError> {
+    // TODO: Implement actor-based log buffering or use a different mechanism
+    Ok(Json(vec![]))
 }
 
-async fn status(State(state): State<AppState>) -> Result<Json<IndexerStatusResponse>, AppError> {
-    let guard = state.indexer.lock().await;
-    let progress = guard.progress.lock().unwrap().clone();
+async fn status(State(state): State<AppState>) -> Result<Json<IndexerStatusResponse>, BlacklightError> {
+    let current = state.indexer.borrow().clone();
     
     let outdated_count = state.db.call(|conn| {
         let count: i64 = conn.query_row(
@@ -44,10 +39,10 @@ async fn status(State(state): State<AppState>) -> Result<Json<IndexerStatusRespo
     }).await?;
 
     let resp = IndexerStatusResponse {
-        status: guard.status.clone(),
-        progress,
-        latest_report: guard.latest_report.clone(),
-        error_message: guard.error_message.clone(),
+        status: current.status,
+        progress: current.progress,
+        latest_report: current.latest_report,
+        error_message: current.error_message,
         required_version: crate::INDEX_VERSION,
         outdated_count,
     };
@@ -63,78 +58,10 @@ struct StartParams {
 async fn start(
     State(state): State<AppState>,
     Json(params): Json<StartParams>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
-    let mut guard = state.indexer.lock().await;
-
-    if guard.status == IndexerStatus::Running {
-        return Err(AppError::bad_request("Indexer is already running"));
-    }
-
-    guard.reset_for_run();
-
-    let progress = guard.progress.clone();
-    let cancel_flag = guard.cancel_flag.clone();
-    let pause_flag = guard.pause_flag.clone();
-    let indexer_state = state.indexer.clone();
-    let db_path = state.db.db_path().to_path_buf();
-    let backup_dir = state.config.resolved_backup_dir();
-    let backup_mode = state.config.backup_mode;
-    let full = params.full;
-    let notify_tx = state.notifications.clone();
-    let skip_dirs = state.config.indexer.skip_dirs.clone();
-    let mut sources = state.config.resolved_sources();
-
-    // Auto-discover extra sources
-    let extras = crate::indexer::scanner::discover_extra_sources();
-    for extra in extras {
-        if !sources.iter().any(|(_, p, _, _)| p == &extra.1) {
-            sources.push((extra.0, extra.1, extra.2, None));
-        }
-    }
-
-    drop(guard); // Release lock before spawning
-
-    tokio::task::spawn_blocking(move || {
-        let config = IndexConfig {
-            sources,
-            db_path,
-            backup_dir,
-            backup_mode,
-            full,
-            verbose: false,
-            skip_dirs,
-            progress: Some(progress),
-            cancel_flag: Some(cancel_flag.clone()),
-            pause_flag: Some(pause_flag),
-            notify_tx: Some(notify_tx.clone()),
-        };
-
-        let result = crate::indexer::run_index(config);
-
-        // Update state with result — block on the async mutex from sync context
-        let rt = tokio::runtime::Handle::current();
-        rt.block_on(async {
-            let mut guard = indexer_state.lock().await;
-            let was_cancelled = cancel_flag.load(Ordering::Relaxed);
-            match result {
-                Ok(report) => {
-                    if was_cancelled {
-                        guard.status = IndexerStatus::Cancelled;
-                        notifications::notify(&notify_tx, NotificationLevel::Warn, "Indexing cancelled");
-                    } else {
-                        guard.status = IndexerStatus::Completed;
-                    }
-                    guard.latest_report = Some(report);
-                }
-                Err(e) => {
-                    guard.status = IndexerStatus::Failed;
-                    let msg = format!("{e:#}");
-                    guard.error_message = Some(msg.clone());
-                    notifications::notify(&notify_tx, NotificationLevel::Error, format!("Indexing failed: {msg}"));
-                }
-            }
-        });
-    });
+) -> Result<(StatusCode, Json<serde_json::Value>), BlacklightError> {
+    state.indexer_tx.send(IndexerCommand::Start { full: params.full })
+        .await
+        .map_err(|e| BlacklightError::Internal(format!("Failed to send start command: {e}")))?;
 
     Ok((
         StatusCode::ACCEPTED,
@@ -144,46 +71,30 @@ async fn start(
 
 async fn stop(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let guard = state.indexer.lock().await;
-
-    if guard.status != IndexerStatus::Running && guard.status != IndexerStatus::Paused {
-        return Err(AppError::bad_request("Indexer is not running"));
-    }
-
-    // Clear pause so the loop can exit, then set cancel
-    guard.pause_flag.store(false, Ordering::Relaxed);
-    guard.cancel_flag.store(true, Ordering::Relaxed);
+) -> Result<Json<serde_json::Value>, BlacklightError> {
+    state.indexer_tx.send(IndexerCommand::Stop)
+        .await
+        .map_err(|e| BlacklightError::Internal(format!("Failed to send stop command: {e}")))?;
 
     Ok(Json(serde_json::json!({ "message": "Cancellation requested" })))
 }
 
 async fn pause(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let mut guard = state.indexer.lock().await;
-
-    if guard.status != IndexerStatus::Running {
-        return Err(AppError::bad_request("Indexer is not running"));
-    }
-
-    guard.pause_flag.store(true, Ordering::Relaxed);
-    guard.status = IndexerStatus::Paused;
+) -> Result<Json<serde_json::Value>, BlacklightError> {
+    state.indexer_tx.send(IndexerCommand::Pause)
+        .await
+        .map_err(|e| BlacklightError::Internal(format!("Failed to send pause command: {e}")))?;
 
     Ok(Json(serde_json::json!({ "message": "Indexer paused" })))
 }
 
 async fn resume(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let mut guard = state.indexer.lock().await;
-
-    if guard.status != IndexerStatus::Paused {
-        return Err(AppError::bad_request("Indexer is not paused"));
-    }
-
-    guard.pause_flag.store(false, Ordering::Relaxed);
-    guard.status = IndexerStatus::Running;
+) -> Result<Json<serde_json::Value>, BlacklightError> {
+    state.indexer_tx.send(IndexerCommand::Resume)
+        .await
+        .map_err(|e| BlacklightError::Internal(format!("Failed to send resume command: {e}")))?;
 
     Ok(Json(serde_json::json!({ "message": "Indexer resumed" })))
 }

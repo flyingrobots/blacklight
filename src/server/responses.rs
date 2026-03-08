@@ -1,11 +1,13 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+use ts_rs::TS;
 
 use crate::enrich::EnrichReport;
 use crate::indexer::{IndexProgress, IndexReport};
 use crate::server::state::{EnricherStatus, IndexerStatus, MigrationStatus, MigrationProgress};
 
 /// Indexer status response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct IndexerStatusResponse {
     pub status: IndexerStatus,
     pub progress: IndexProgress,
@@ -16,7 +18,8 @@ pub struct IndexerStatusResponse {
 }
 
 /// Enricher status response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct EnricherStatusResponse {
     pub status: EnricherStatus,
     pub sessions_total: usize,
@@ -29,7 +32,8 @@ pub struct EnricherStatusResponse {
 }
 
 /// Review queue item for pending enrichments.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ReviewItem {
     pub session_id: String,
     pub title: String,
@@ -43,7 +47,8 @@ pub struct ReviewItem {
 }
 
 /// Schedule configuration response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ScheduleConfigResponse {
     pub enabled: bool,
     pub interval_minutes: i32,
@@ -55,8 +60,9 @@ pub struct ScheduleConfigResponse {
 }
 
 /// Paginated response wrapper.
-#[derive(Debug, Serialize)]
-pub struct Paginated<T: Serialize> {
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
+pub struct Paginated<T> {
     pub items: Vec<T>,
     pub total: i64,
     pub limit: i64,
@@ -64,7 +70,8 @@ pub struct Paginated<T: Serialize> {
 }
 
 /// Session list item.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct SessionSummary {
     pub id: String,
     pub project_path: String,
@@ -90,14 +97,16 @@ pub struct SessionSummary {
 }
 
 /// Tag with confidence score from AI enrichment.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct SessionTag {
     pub tag: String,
     pub confidence: f64,
 }
 
 /// Full session detail.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct SessionDetail {
     pub id: String,
     pub project_path: String,
@@ -121,7 +130,8 @@ pub struct SessionDetail {
     pub fingerprint: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct SessionOutcome {
     pub underlying_goal: Option<String>,
     pub outcome: Option<String>,
@@ -133,7 +143,8 @@ pub struct SessionOutcome {
 }
 
 /// Message in a session thread.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct MessageDetail {
     pub id: String,
     pub session_id: String,
@@ -148,7 +159,8 @@ pub struct MessageDetail {
 }
 
 /// Content block within a message.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ContentBlockDetail {
     pub block_index: i64,
     pub block_type: String,
@@ -159,7 +171,8 @@ pub struct ContentBlockDetail {
 }
 
 /// Tool call record.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ToolCallDetail {
     pub id: String,
     pub tool_name: String,
@@ -169,7 +182,8 @@ pub struct ToolCallDetail {
 }
 
 /// File reference record.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct FileReference {
     pub file_path: String,
     pub operation: String,
@@ -178,7 +192,8 @@ pub struct FileReference {
 }
 
 /// Search result enriched with session context.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct SearchHit {
     pub hash: String,
     pub kind: String,
@@ -191,7 +206,8 @@ pub struct SearchHit {
 }
 
 /// Overview stats for the analytics dashboard.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct AnalyticsOverview {
     pub total_sessions: i64,
     pub total_messages: i64,
@@ -203,7 +219,8 @@ pub struct AnalyticsOverview {
 }
 
 /// Daily activity stats.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct DailyStats {
     pub date: String,
     pub message_count: Option<i64>,
@@ -212,7 +229,8 @@ pub struct DailyStats {
 }
 
 /// Project breakdown for a specific day.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct DailyProjectStats {
     pub date: String,
     pub project_slug: String,
@@ -220,7 +238,8 @@ pub struct DailyProjectStats {
 }
 
 /// Model usage breakdown.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ModelUsage {
     pub model: String,
     pub input_tokens: Option<i64>,
@@ -230,14 +249,16 @@ pub struct ModelUsage {
 }
 
 /// Tool frequency stats.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ToolFrequency {
     pub tool_name: String,
     pub call_count: i64,
 }
 
 /// Per-project breakdown.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ProjectBreakdown {
     pub project_slug: String,
     pub session_count: i64,
@@ -246,7 +267,8 @@ pub struct ProjectBreakdown {
 }
 
 /// Per-LLM breakdown (source_kind).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct LlmBreakdown {
     pub source_kind: String,
     pub session_count: i64,
@@ -255,7 +277,8 @@ pub struct LlmBreakdown {
 }
 
 /// Rich per-project detail for the Projects page.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct ProjectDetail {
     pub project_slug: String,
     pub project_path: String,
@@ -269,14 +292,16 @@ pub struct ProjectDetail {
 }
 
 /// Outcome distribution.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct OutcomeStats {
     pub outcome: String,
     pub count: i64,
 }
 
 /// Storage overview.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct StorageOverview {
     pub total_blobs: i64,
     pub total_bytes: i64,
@@ -286,7 +311,8 @@ pub struct StorageOverview {
     pub by_kind: Vec<StorageByKind>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct StorageByKind {
     pub kind: String,
     pub blob_count: i64,
@@ -294,7 +320,8 @@ pub struct StorageByKind {
 }
 
 /// Index coverage — what % of the source data is indexed and searchable.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct IndexCoverage {
     /// Files discovered by the scanner on disk
     pub source_files: i64,
@@ -328,7 +355,8 @@ pub struct IndexCoverage {
     pub by_kind: Vec<CoverageByKind>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct CoverageByKind {
     pub kind: String,
     pub file_count: i64,
@@ -336,7 +364,8 @@ pub struct CoverageByKind {
 }
 
 /// File provenance entry.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct FileProvenance {
     pub file_path: String,
     pub session_count: i64,
@@ -345,7 +374,8 @@ pub struct FileProvenance {
 }
 
 /// Migration status response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct MigrationStatusResponse {
     pub status: MigrationStatus,
     pub progress: MigrationProgress,

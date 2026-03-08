@@ -3,7 +3,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 
-use crate::server::errors::AppError;
+use crate::error::BlacklightError;
 use crate::server::queries;
 use crate::server::responses::{Paginated, ReviewItem};
 use crate::server::state::AppState;
@@ -31,7 +31,7 @@ fn default_limit() -> i64 {
 async fn list_pending(
     State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<ListParams>,
-) -> Result<Json<Paginated<ReviewItem>>, AppError> {
+) -> Result<Json<Paginated<ReviewItem>>, BlacklightError> {
     let result = state
         .db
         .call(move |conn| queries::review::list_pending(conn, params.limit, params.offset))
@@ -43,7 +43,7 @@ async fn list_pending(
 async fn approve(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let sid = session_id.clone();
     let updated = state
         .db
@@ -51,7 +51,7 @@ async fn approve(
         .await?;
 
     if !updated {
-        return Err(AppError::not_found("No pending enrichment found for this session"));
+        return Err(BlacklightError::NotFound("No pending enrichment found for this session".to_string()));
     }
 
     Ok(Json(serde_json::json!({ "message": "Approved", "session_id": session_id })))
@@ -60,7 +60,7 @@ async fn approve(
 async fn reject(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let sid = session_id.clone();
     let updated = state
         .db
@@ -68,7 +68,7 @@ async fn reject(
         .await?;
 
     if !updated {
-        return Err(AppError::not_found("No pending enrichment found for this session"));
+        return Err(BlacklightError::NotFound("No pending enrichment found for this session".to_string()));
     }
 
     Ok(Json(serde_json::json!({ "message": "Rejected", "session_id": session_id })))
@@ -76,7 +76,7 @@ async fn reject(
 
 async fn approve_all(
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<serde_json::Value>, BlacklightError> {
     let count = state
         .db
         .call(queries::review::approve_all)
@@ -84,3 +84,4 @@ async fn approve_all(
 
     Ok(Json(serde_json::json!({ "message": "Approved all", "count": count })))
 }
+

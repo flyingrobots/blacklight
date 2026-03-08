@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use crate::config::SqliteConfig;
 
+pub mod query_builder;
+
 const MIGRATION_001: &str = include_str!("schema.sql");
 const MIGRATION_002: &str = include_str!("enrich_migration.sql");
 const MIGRATION_003: &str = include_str!("schedule_migration.sql");

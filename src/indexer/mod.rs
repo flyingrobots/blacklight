@@ -1,28 +1,33 @@
-pub mod change;
-pub mod db_ops;
-pub mod file_paths;
-pub mod handlers;
-pub mod jsonl;
-pub mod router;
-pub mod scanner;
-pub mod sessions;
-pub mod structured;
-pub mod gemini;
-pub mod codex;
-
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+use ts_rs::TS;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::watch;
 
 use change::FileStatus;
 use scanner::FileKind;
 use crate::config::{SourceKind, BackupMode};
-use crate::content;
-
+use crate::server::state::IndexerState;
 use crate::notifications::{self, NotificationLevel, NotificationSender};
+use crate::indexer::provider::SourceProvider;
+use crate::indexer::providers::{ClaudeProvider, GeminiProvider, CodexProvider};
+
+pub mod change;
+pub mod codex;
+pub mod db_ops;
+pub mod file_paths;
+pub mod gemini;
+pub mod handlers;
+pub mod jsonl;
+pub mod provider;
+pub mod providers;
+pub mod router;
+pub mod scanner;
+pub mod sessions;
+pub mod structured;
 
 /// Configuration for an index run.
 pub struct IndexConfig {
@@ -35,7 +40,7 @@ pub struct IndexConfig {
     /// Directories to skip during scanning.
     pub skip_dirs: Vec<String>,
     /// Shared progress tracker (updated during indexing).
-    pub progress: Option<Arc<Mutex<IndexProgress>>>,
+    pub progress_tx: Option<watch::Sender<IndexerState>>,
     /// Cancellation flag (checked between phases and files).
     pub cancel_flag: Option<Arc<AtomicBool>>,
     /// Pause flag (spins between phases and files while true).
@@ -45,7 +50,8 @@ pub struct IndexConfig {
 }
 
 /// Live progress information updated during indexing.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct IndexProgress {
     pub phase: String,
     pub files_total: usize,
@@ -55,7 +61,8 @@ pub struct IndexProgress {
 }
 
 /// Report produced after indexing completes.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
 pub struct IndexReport {
     pub sessions_parsed: usize,
     pub messages_processed: usize,
@@ -90,11 +97,9 @@ impl std::fmt::Display for IndexReport {
     }
 }
 
-fn update_progress(progress: &Option<Arc<Mutex<IndexProgress>>>, f: impl Fn(&mut IndexProgress)) {
-    if let Some(p) = progress {
-        if let Ok(mut guard) = p.lock() {
-            f(&mut guard);
-        }
+fn update_progress(progress_tx: &Option<watch::Sender<IndexerState>>, f: impl Fn(&mut IndexProgress)) {
+    if let Some(tx) = progress_tx {
+        tx.send_modify(|s| f(&mut s.progress));
     }
 }
 
@@ -132,10 +137,16 @@ fn notify_info(config: &IndexConfig, msg: impl Into<String>) {
 pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
     let start = Instant::now();
     let mut report = IndexReport::default();
-    let progress = config.progress.clone();
     let cancel_flag = config.cancel_flag.clone();
 
-    update_progress(&progress, |p| p.phase = "Scanning".to_string());
+    // Register providers
+    let providers: Vec<Box<dyn SourceProvider>> = vec![
+        Box::new(ClaudeProvider),
+        Box::new(GeminiProvider),
+        Box::new(CodexProvider),
+    ];
+
+    update_progress(&config.progress_tx, |p| p.phase = "Scanning".to_string());
 
     tracing::info!("indexing {} sources → {}", config.sources.len(), config.db_path.display());
     notify_info(&config, "Indexing started");
@@ -181,7 +192,7 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         return Ok(report);
     }
 
-    update_progress(&progress, |p| p.phase = "Detecting changes".to_string());
+    update_progress(&config.progress_tx, |p| p.phase = "Detecting changes".to_string());
 
     // 3. Change detection
     let manifest: Vec<_> = manifest_with_source.iter().map(|(_, _, _, entry)| entry.clone()).collect();
@@ -217,314 +228,148 @@ pub fn run_index(config: IndexConfig) -> Result<IndexReport> {
         plan.deleted_paths.len(),
     );
 
-    // Partition files by kind
-    let mut session_indexes = Vec::new();
-    let mut session_jsonls = Vec::new();
-    let mut gemini_sessions = Vec::new();
-    let mut codex_sessions = Vec::new();
-    let mut task_files = Vec::new();
-    let mut facet_files = Vec::new();
-    let mut stats_cache_path: Option<(String, SourceKind, Option<String>, scanner::FileEntry, FileStatus)> = None;
-    let mut history_path: Option<(String, SourceKind, Option<String>, scanner::FileEntry, FileStatus)> = None;
-    let mut plan_files = Vec::new();
+    // Partition files into phases
+    let mut metadata_files = Vec::new();
+    let mut content_files = Vec::new();
+    let mut structured_files = Vec::new();
 
-    for (name, kind, cas_prefix, entry, status) in &work_queue {
-        match &entry.kind {
-            FileKind::SessionIndex => session_indexes.push((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::SessionJsonl => session_jsonls.push((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::GeminiSessionJson => gemini_sessions.push((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::CodexSessionJsonl => codex_sessions.push((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::TaskJson => task_files.push((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::FacetJson => facet_files.push((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::StatsCache => stats_cache_path = Some((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::HistoryJsonl => history_path = Some((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::PlanMarkdown => plan_files.push((name.clone(), kind.clone(), cas_prefix.clone(), entry.clone(), status.clone())),
-            FileKind::TodoJson => { /* TODO: implement todo parsing */ }
-            FileKind::ToolResultTxt => { /* TODO: implement tool result parsing */ }
-            FileKind::ClaudeDesktopSessionIndex => { /* Handled separately in Phase 1 */ }
+    for item in &work_queue {
+        let kind = &item.3.kind;
+        match kind {
+            FileKind::SessionIndex | FileKind::ClaudeDesktopSessionIndex => metadata_files.push(item),
+            FileKind::SessionJsonl | FileKind::GeminiSessionJson | FileKind::CodexSessionJsonl => content_files.push(item),
+            FileKind::TaskJson | FileKind::FacetJson | FileKind::StatsCache | FileKind::HistoryJsonl | FileKind::PlanMarkdown => structured_files.push(item),
+            _ => {}
         }
     }
 
-    wait_if_paused(&config);
-    if is_cancelled(&cancel_flag) {
-        return Ok(report);
-    }
-
-    // Phase 1: Parse metadata files (Claude specific)
-    tracing::info!("phase 1: parsing metadata files");
-    update_progress(&progress, |p| {
+    // Phase 1: Metadata files
+    update_progress(&config.progress_tx, |p| {
         p.phase = "Phase 1: Metadata indexes".to_string();
-        p.files_total = session_indexes.len() + plan_files.len(); 
+        p.files_total = metadata_files.len();
         p.files_done = 0;
     });
 
-    for (source_name, kind, _, entry, _) in &session_indexes {
-        match sessions::parse_session_index(&conn, &entry.path) {
-            Ok(count) => {
-                report.sessions_parsed += count;
-                conn.execute(
-                    "UPDATE sessions SET source_name = ?1, source_kind = ?2 WHERE source_file = ?3",
-                    rusqlite::params![source_name, kind.to_string().to_lowercase(), entry.path.to_string_lossy()],
-                ).ok();
-            },
-            Err(e) => {
-                let msg = format!("Failed to parse {}: {e}", entry.path.display());
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
+    for (source_name, kind, _, entry, _) in &metadata_files {
+        for provider in &providers {
+            if provider.can_handle(&entry.kind) {
+                match provider.process_metadata(&conn, entry) {
+                    Ok(count) => {
+                        report.sessions_parsed += count;
+                        conn.execute(
+                            "UPDATE sessions SET source_name = ?1, source_kind = ?2 WHERE source_file = ?3",
+                            rusqlite::params![source_name, kind.to_string().to_lowercase(), entry.path.to_string_lossy()],
+                        ).ok();
+                    }
+                    Err(e) => {
+                        let msg = format!("Failed to parse metadata {}: {e}", entry.path.display());
+                        tracing::warn!("{msg}");
+                        notify_warn(&config, msg);
+                    }
+                }
             }
         }
+        update_progress(&config.progress_tx, |p| p.files_done += 1);
+        wait_if_paused(&config);
+        if is_cancelled(&cancel_flag) { return Ok(report); }
     }
 
-    // Claude Desktop local_*.json files
-    let desktop_indexes: Vec<_> = work_queue.iter()
-        .filter(|(_, _, _, e, _)| e.kind == FileKind::ClaudeDesktopSessionIndex)
-        .collect();
-    
-    for (source_name, kind, _, entry, _) in desktop_indexes {
-        match sessions::parse_desktop_session_index(&conn, &entry.path) {
-            Ok(count) => {
-                report.sessions_parsed += count;
-                conn.execute(
-                    "UPDATE sessions SET source_name = ?1, source_kind = ?2 WHERE source_file = ?3",
-                    rusqlite::params![source_name, kind.to_string().to_lowercase(), entry.path.to_string_lossy()],
-                ).ok();
-            },
-            Err(e) => {
-                let msg = format!("Failed to parse desktop session index {}: {e}", entry.path.display());
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
-    }
-
-    wait_if_paused(&config);
-    if is_cancelled(&cancel_flag) {
-        return Ok(report);
-    }
-
-    // Phase 2: Stream Claude JSONL files
-    tracing::info!("phase 2: streaming {} Claude JSONL files", session_jsonls.len());
-    update_progress(&progress, |p| {
-        p.phase = "Phase 2: Claude JSONL files".to_string();
-        p.files_total = session_jsonls.len() + gemini_sessions.len() + codex_sessions.len();
+    // Phase 2: Content files
+    update_progress(&config.progress_tx, |p| {
+        p.phase = "Phase 2: Content files".to_string();
+        p.files_total = content_files.len();
         p.files_done = 0;
     });
-    for (source_name, kind, cas_prefix, entry, status) in &session_jsonls {
+
+    for (source_name, _kind, cas_prefix, entry, status) in content_files {
         let start_offset = match status {
             FileStatus::Modified { last_byte_offset } => *last_byte_offset,
             _ => 0,
         };
 
-        match router::process_jsonl(
-            &conn,
-            &entry.path,
-            start_offset,
-            config.verbose,
-            Some(source_name),
-            Some(&kind.to_string().to_lowercase()),
-        ) {
-            Ok((stats, final_offset)) => {
-                report.messages_processed += stats.messages_processed;
-                report.messages_skipped += stats.messages_skipped;
-                report.parse_errors += stats.parse_errors;
-                report.blobs_inserted += stats.blobs_inserted;
-                report.tool_calls_inserted += stats.tool_calls_inserted;
+        for provider in &providers {
+            if provider.can_handle(&entry.kind) {
+                match provider.process_content(&conn, entry, start_offset) {
+                    Ok((stats, final_offset)) => {
+                        report.messages_processed += stats.messages_processed;
+                        report.messages_skipped += stats.messages_skipped;
+                        report.parse_errors += stats.parse_errors;
+                        report.blobs_inserted += stats.blobs_inserted;
+                        report.tool_calls_inserted += stats.tool_calls_inserted;
+                        report.sessions_parsed += stats.sessions_parsed;
 
-                conn.execute(
-                    "UPDATE messages SET source_name = ?1 WHERE session_id IN (SELECT id FROM sessions WHERE source_file = ?2) AND source_name IS NULL",
-                    rusqlite::params![source_name, entry.path.to_string_lossy()],
-                ).ok();
+                        conn.execute(
+                            "UPDATE messages SET source_name = ?1 WHERE session_id IN (SELECT id FROM sessions WHERE source_file = ?2) AND source_name IS NULL",
+                            rusqlite::params![source_name, entry.path.to_string_lossy()],
+                        ).ok();
 
-                let actual_prefix = cas_prefix.as_deref().unwrap_or(source_name);
-                if let Err(e) = backup_source_file(&conn, &entry.path, &config.backup_dir, config.backup_mode, actual_prefix) {
-                    tracing::warn!("failed to backup {}: {e}", entry.path.display());
+                        let actual_prefix = cas_prefix.as_deref().unwrap_or(source_name);
+                        if let Err(e) = backup_source_file(&conn, &entry.path, &config.backup_dir, config.backup_mode, actual_prefix) {
+                            tracing::warn!("failed to backup {}: {e}", entry.path.display());
+                        }
+
+                        change::mark_indexed(&conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, final_offset)?;
+                        report.files_processed += 1;
+                    }
+                    Err(e) => {
+                        let msg = format!("Failed to process {}: {e:#}", entry.path.display());
+                        tracing::warn!("{msg}");
+                        notify_warn(&config, msg);
+                    }
                 }
-
-                change::mark_indexed(&conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, final_offset)?;
-                report.files_processed += 1;
-            }
-            Err(e) => {
-                let msg = format!("Failed to process {}: {e:#}", entry.path.display());
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
             }
         }
 
-        update_progress(&progress, |p| {
+        update_progress(&config.progress_tx, |p| {
             p.files_done += 1;
             p.messages_processed = report.messages_processed;
             p.blobs_inserted = report.blobs_inserted;
         });
-
         wait_if_paused(&config);
-        if is_cancelled(&cancel_flag) {
-            return Ok(report);
-        }
-    }
-
-    // Phase 2.1: Process Gemini sessions
-    tracing::info!("phase 2.1: processing {} Gemini sessions", gemini_sessions.len());
-    for (source_name, _, cas_prefix, entry, _) in &gemini_sessions {
-        match gemini::process_gemini_session(&conn, &entry.path, source_name) {
-            Ok(()) => {
-                report.sessions_parsed += 1;
-                report.files_processed += 1;
-
-                let actual_prefix = cas_prefix.as_deref().unwrap_or(source_name);
-                if let Err(e) = backup_source_file(&conn, &entry.path, &config.backup_dir, config.backup_mode, actual_prefix) {
-                    tracing::warn!("failed to backup {}: {e}", entry.path.display());
-                }
-
-                change::mark_indexed(&conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, entry.size_bytes)?;
-            }
-            Err(e) => {
-                let msg = format!("Failed to process Gemini session {}: {e:#}", entry.path.display());
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
-
-        update_progress(&progress, |p| {
-            p.files_done += 1;
-        });
-
-        wait_if_paused(&config);
-        if is_cancelled(&cancel_flag) {
-            return Ok(report);
-        }
-    }
-
-    // Phase 2.2: Process Codex sessions
-    tracing::info!("phase 2.2: processing {} Codex sessions", codex_sessions.len());
-    for (source_name, _, cas_prefix, entry, _) in &codex_sessions {
-        match codex::process_codex_session(&conn, &entry.path, source_name) {
-            Ok(()) => {
-                report.sessions_parsed += 1;
-                report.files_processed += 1;
-
-                let actual_prefix = cas_prefix.as_deref().unwrap_or(source_name);
-                if let Err(e) = backup_source_file(&conn, &entry.path, &config.backup_dir, config.backup_mode, actual_prefix) {
-                    tracing::warn!("failed to backup {}: {e}", entry.path.display());
-                }
-
-                change::mark_indexed(&conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, entry.size_bytes)?;
-            }
-            Err(e) => {
-                let msg = format!("Failed to process Codex session {}: {e:#}", entry.path.display());
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
-
-        update_progress(&progress, |p| {
-            p.files_done += 1;
-        });
-
-        wait_if_paused(&config);
-        if is_cancelled(&cancel_flag) {
-            return Ok(report);
-        }
-    }
-
-    wait_if_paused(&config);
-    if is_cancelled(&cancel_flag) {
-        return Ok(report);
+        if is_cancelled(&cancel_flag) { return Ok(report); }
     }
 
     // Phase 3: Structured data
-    tracing::info!("phase 3: parsing structured data");
-    update_progress(&progress, |p| {
+    update_progress(&config.progress_tx, |p| {
         p.phase = "Phase 3: Structured data".to_string();
     });
 
-    // Tasks
-    if !task_files.is_empty() {
-        let entries: Vec<_> = task_files.iter().map(|(_, _, _, e, _)| e.clone()).collect();
-        match structured::parse_tasks(&conn, &entries) {
-            Ok(count) => report.tasks_parsed = count,
-            Err(e) => {
-                let msg = format!("Failed to parse tasks: {e}");
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
+    let task_entries: Vec<_> = structured_files.iter().filter(|(_, _, _, e, _)| e.kind == FileKind::TaskJson).map(|(_, _, _, e, _)| e.clone()).collect();
+    if !task_entries.is_empty() {
+        if let Ok(count) = structured::parse_tasks(&conn, &task_entries) { report.tasks_parsed = count; }
     }
 
-    // Facets
-    if !facet_files.is_empty() {
-        let entries: Vec<_> = facet_files.iter().map(|(_, _, _, e, _)| e.clone()).collect();
-        match structured::parse_facets(&conn, &entries) {
-            Ok(count) => report.facets_parsed = count,
-            Err(e) => {
-                let msg = format!("Failed to parse facets: {e}");
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
+    let facet_entries: Vec<_> = structured_files.iter().filter(|(_, _, _, e, _)| e.kind == FileKind::FacetJson).map(|(_, _, _, e, _)| e.clone()).collect();
+    if !facet_entries.is_empty() {
+        if let Ok(count) = structured::parse_facets(&conn, &facet_entries) { report.facets_parsed = count; }
     }
 
-    // Stats cache
-    if let Some((_, _, _, entry, _)) = &stats_cache_path {
-        match structured::parse_stats_cache(&conn, &entry.path) {
-            Ok(()) => {}
-            Err(e) => {
-                let msg = format!("Failed to parse stats-cache: {e}");
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
+    if let Some((_, _, _, entry, _)) = structured_files.iter().find(|(_, _, _, e, _)| e.kind == FileKind::StatsCache) {
+        let _ = structured::parse_stats_cache(&conn, &entry.path);
     }
 
-    // Plans
-    if !plan_files.is_empty() {
-        let entries: Vec<_> = plan_files.iter().map(|(_, _, _, e, _)| e.clone()).collect();
-        match structured::parse_plans(&conn, &entries) {
-            Ok(count) => report.plans_parsed = count,
-            Err(e) => {
-                let msg = format!("Failed to parse plans: {e}");
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
+    let plan_entries: Vec<_> = structured_files.iter().filter(|(_, _, _, e, _)| e.kind == FileKind::PlanMarkdown).map(|(_, _, _, e, _)| e.clone()).collect();
+    if !plan_entries.is_empty() {
+        if let Ok(count) = structured::parse_plans(&conn, &plan_entries) { report.plans_parsed = count; }
     }
 
-    // History
-    if let Some((_, _, _, entry, _)) = &history_path {
-        match structured::parse_history(&conn, &entry.path) {
-            Ok(count) => report.history_entries = count,
-            Err(e) => {
-                let msg = format!("Failed to parse history: {e}");
-                tracing::warn!("{msg}");
-                notify_warn(&config, msg);
-            }
-        }
+    if let Some((_, _, _, entry, _)) = structured_files.iter().find(|(_, _, _, e, _)| e.kind == FileKind::HistoryJsonl) {
+        if let Ok(count) = structured::parse_history(&conn, &entry.path) { report.history_entries = count; }
     }
 
-    let other_files = session_indexes.iter()
-        .chain(task_files.iter())
-        .chain(facet_files.iter())
-        .chain(plan_files.iter())
-        .chain(stats_cache_path.as_ref().into_iter())
-        .chain(history_path.as_ref().into_iter());
-
-    for (_, _, _, entry, _) in other_files {
+    for (_, _, _, entry, _) in structured_files {
         change::mark_indexed(&conn, &entry.path.to_string_lossy(), entry.mtime_ms, entry.size_bytes, entry.size_bytes)?;
         report.files_processed += 1;
     }
 
     report.elapsed_secs = start.elapsed().as_secs_f64();
-
-    update_progress(&progress, |p| {
+    update_progress(&config.progress_tx, |p| {
         p.phase = "Done".to_string();
         p.messages_processed = report.messages_processed;
         p.blobs_inserted = report.blobs_inserted;
     });
 
-    let db_size = std::fs::metadata(&config.db_path).map(|m| m.len()).unwrap_or(0);
-    tracing::info!("database size: {:.1} MB", db_size as f64 / 1_048_576.0);
-
     notify_info(&config, format!("Indexing complete: {} sessions, {} messages in {:.1}s", report.sessions_parsed, report.messages_processed, report.elapsed_secs));
-
     Ok(report)
 }
 
@@ -542,7 +387,7 @@ fn ensure_backup_repo(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: &Path, mode: BackupMode, source_prefix: &str) -> Result<()> {
+pub fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: &Path, mode: BackupMode, source_prefix: &str) -> Result<()> {
     let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
     let base_slug = if file_name.starts_with("session-") {
         file_name.strip_suffix(".json").unwrap_or(file_name).to_string()
@@ -584,7 +429,7 @@ fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: &Pat
                         } else { None };
 
                         if let Some(sid) = session_id {
-                            db_ops::record_backup(conn, sid, &path.to_string_lossy(), &content_hash, file_size)?;
+                            crate::indexer::db_ops::record_backup(conn, sid, &path.to_string_lossy(), &content_hash, file_size)?;
                         }
                         return Ok(());
                     }
@@ -610,7 +455,7 @@ fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: &Pat
         }
         BackupMode::Simple => {
             let content = std::fs::read(path)?;
-            let hash = content::hash_content_bytes(&content);
+            let hash = crate::content::hash_content_bytes(&content);
             let size = content.len() as u64;
 
             if !backup_dir.exists() { std::fs::create_dir_all(backup_dir)?; }
@@ -628,7 +473,7 @@ fn backup_source_file(conn: &rusqlite::Connection, path: &Path, backup_dir: &Pat
             } else { None };
 
             if let Some(sid) = session_id {
-                db_ops::record_backup(conn, sid, &path.to_string_lossy(), &hash, size)?;
+                crate::indexer::db_ops::record_backup(conn, sid, &path.to_string_lossy(), &hash, size)?;
             }
         }
     }
