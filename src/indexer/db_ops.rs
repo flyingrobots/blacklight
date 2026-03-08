@@ -70,6 +70,27 @@ pub struct LineOps {
     pub tool_output_links: Vec<(String, String)>,
 }
 
+impl LineOps {
+    pub fn redact_all(&mut self, redactor: &crate::indexer::redact::Redactor) {
+        // Redact blobs
+        for (_, content, size, _) in &mut self.blobs {
+            let redacted = redactor.redact(content);
+            if let std::borrow::Cow::Owned(s) = redacted {
+                *content = s;
+                *size = content.len() as i64;
+            }
+        }
+
+        // Redact FTS entries
+        for (_, _, content) in &mut self.fts_entries {
+            let redacted = redactor.redact(content);
+            if let std::borrow::Cow::Owned(s) = redacted {
+                *content = s;
+            }
+        }
+    }
+}
+
 /// Statistics from a flush_batch call.
 #[derive(Debug, Default)]
 pub struct FlushStats {

@@ -157,13 +157,28 @@ const SKIP_EXTENSIONS: &[&str] = &["lock", "highwatermark"];
 /// Uses the default skip_dirs list.
 pub fn scan(root: &Path) -> Result<Vec<FileEntry>> {
     let default_skip: Vec<String> = DEFAULT_SKIP_DIRS.iter().map(|s| (*s).to_string()).collect();
-    scan_with_skip_dirs(root, &default_skip)
+    scan_with_skip_dirs(root, &default_skip, &[])
 }
 
-/// Recursively scan the given root directory with custom skip_dirs.
-pub fn scan_with_skip_dirs(root: &Path, skip_dirs: &[String]) -> Result<Vec<FileEntry>> {
+/// Recursively scan the given root directory with custom skip_dirs and exclude_paths.
+pub fn scan_with_skip_dirs(
+    root: &Path,
+    skip_dirs: &[String],
+    exclude_paths: &[String],
+) -> Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
-    walk_dir(root, root, skip_dirs, &mut entries)?;
+
+    // Compile glob patterns
+    let mut patterns = Vec::new();
+    for p in exclude_paths {
+        if let Ok(pat) = glob::Pattern::new(p) {
+            patterns.push(pat);
+        } else {
+            tracing::warn!("invalid glob pattern: {}", p);
+        }
+    }
+
+    walk_dir(root, root, skip_dirs, &patterns, &mut entries)?;
     entries.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.path.cmp(&b.path)));
 
     // Log counts per kind
@@ -183,6 +198,7 @@ fn walk_dir(
     root: &Path,
     dir: &Path,
     skip_dirs: &[String],
+    exclude_patterns: &[glob::Pattern],
     entries: &mut Vec<FileEntry>,
 ) -> Result<()> {
     let read_dir = match fs::read_dir(dir) {
@@ -199,6 +215,15 @@ fn walk_dir(
     for entry in read_dir {
         let entry = entry.with_context(|| format!("failed to read entry in {}", dir.display()))?;
         let path = entry.path();
+        
+        // Check glob exclusions (relative to root)
+        if let Ok(rel) = path.strip_prefix(root) {
+            if exclude_patterns.iter().any(|p| p.matches_path(rel)) {
+                tracing::debug!("glob excluded: {}", rel.display());
+                continue;
+            }
+        }
+
         let file_type = entry
             .file_type()
             .with_context(|| format!("failed to get file type for {}", path.display()))?;
@@ -210,7 +235,7 @@ fn walk_dir(
                 tracing::debug!("skipping directory: {}", path.display());
                 continue;
             }
-            walk_dir(root, &path, skip_dirs, entries)?;
+            walk_dir(root, &path, skip_dirs, exclude_patterns, entries)?;
         } else if file_type.is_file() {
             let file_name = entry.file_name();
             let file_name_str = file_name.to_string_lossy();

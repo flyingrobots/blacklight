@@ -23,6 +23,8 @@ futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 ts-rs = "7"
+glob = "0.3"
+regex = "1"
 reqwest = { version = "0.12", features = ["json"] }
 toml = "0.8"
 ninelives = "0.1"

@@ -24,6 +24,7 @@ pub mod handlers;
 pub mod jsonl;
 pub mod provider;
 pub mod providers;
+pub mod redact;
 pub mod router;
 pub mod scanner;
 pub mod sessions;
@@ -39,6 +40,14 @@ pub struct IndexConfig {
     pub verbose: bool,
     /// Directories to skip during scanning.
     pub skip_dirs: Vec<String>,
+    /// Glob patterns to exclude from indexing.
+    pub exclude_paths: Vec<String>,
+    /// Whether to redact secrets.
+    pub redact_secrets: bool,
+    /// Custom redaction patterns.
+    pub redaction_patterns: Vec<String>,
+    /// How many days to keep backups.
+    pub retention_days: u32,
     /// Shared progress tracker (updated during indexing).
     pub progress_tx: Option<watch::Sender<IndexerState>>,
     /// Cancellation flag (checked between phases and files).
@@ -171,6 +180,13 @@ pub fn run_index(mut config: IndexConfig) -> Result<IndexReport> {
     let error_msg = result.as_ref().err().map(|e| format!("{e:#}"));
     db_ops::record_run_finish(&conn, run_id, status, &report, error_msg.as_deref())?;
 
+    // 4. Retention pass
+    if config.retention_days > 0 {
+        if let Err(e) = run_retention_pass(&conn, &config.backup_dir, config.retention_days) {
+            tracing::warn!("retention pass failed: {e}");
+        }
+    }
+
     result.map(|mut r| {
         r.elapsed_secs = report.elapsed_secs;
         r
@@ -188,10 +204,16 @@ fn run_index_inner(config: &IndexConfig, conn: &rusqlite::Connection) -> Result<
         Box::new(CodexProvider),
     ];
 
+    let redactor = if config.redact_secrets {
+        Some(redact::Redactor::new(&config.redaction_patterns))
+    } else {
+        None
+    };
+
     update_progress(&config.progress_tx, |p| p.phase = "Scanning".to_string());
 
     tracing::info!("indexing {} sources → {}", config.sources.len(), config.db_path.display());
-    notify_info(&config, "Indexing started");
+    notify_info(config, "Indexing started");
 
     // 0. Initialize backup git repo if it doesn't exist
     if let Err(e) = ensure_backup_repo(&config.backup_dir) {
@@ -208,7 +230,7 @@ fn run_index_inner(config: &IndexConfig, conn: &rusqlite::Connection) -> Result<
         }
 
         tracing::info!("scanning source: {} ({})", name, path.display());
-        match scanner::scan_with_skip_dirs(path, &config.skip_dirs) {
+        match scanner::scan_with_skip_dirs(path, &config.skip_dirs, &config.exclude_paths) {
             Ok(entries) => {
                 for entry in entries {
                     manifest_with_source.push((name.clone(), kind.clone(), cas_prefix.clone(), entry));
@@ -217,7 +239,7 @@ fn run_index_inner(config: &IndexConfig, conn: &rusqlite::Connection) -> Result<
             Err(e) => {
                 let msg = format!("Failed to scan {}: {e}", path.display());
                 tracing::warn!("{msg}");
-                notify_warn(&config, msg);
+                notify_warn(config, msg);
             }
         }
     }
@@ -327,7 +349,7 @@ fn run_index_inner(config: &IndexConfig, conn: &rusqlite::Connection) -> Result<
 
         for provider in &providers {
             if provider.can_handle(&entry.kind) {
-                match provider.process_content(conn, entry, start_offset) {
+                match provider.process_content(conn, entry, start_offset, redactor.as_ref()) {
                     Ok((stats, final_offset)) => {
                         report.messages_processed += stats.messages_processed;
                         report.messages_skipped += stats.messages_skipped;
@@ -408,6 +430,38 @@ fn run_index_inner(config: &IndexConfig, conn: &rusqlite::Connection) -> Result<
 
     notify_info(config, format!("Indexing complete: {} sessions, {} messages", report.sessions_parsed, report.messages_processed));
     Ok(report)
+}
+
+fn run_retention_pass(conn: &rusqlite::Connection, backup_dir: &Path, days: u32) -> Result<()> {
+    tracing::info!("running retention pass: pruning backups older than {days} days");
+    
+    // Find hashes to delete
+    let mut stmt = conn.prepare(
+        "SELECT content_hash FROM session_backups WHERE backed_up_at < datetime('now', '-' || ?1 || ' days')"
+    )?;
+    
+    let hashes: Vec<String> = stmt.query_map([days], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+
+    if hashes.is_empty() {
+        return Ok(());
+    }
+
+    tracing::info!("pruning {} old backups", hashes.len());
+
+    for hash in &hashes {
+        let path = backup_dir.join(hash);
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    conn.execute(
+        "DELETE FROM session_backups WHERE backed_up_at < datetime('now', '-' || ?1 || ' days')",
+        [days],
+    )?;
+
+    Ok(())
 }
 
 fn ensure_backup_repo(path: &Path) -> Result<()> {

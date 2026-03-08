@@ -19,6 +19,7 @@ pub struct BlacklightConfig {
 
     pub server: ServerConfig,
     pub indexer: IndexerConfig,
+    pub privacy: PrivacyConfig,
     pub enrichment: EnrichmentConfig,
     pub scheduler: SchedulerConfig,
     pub sqlite: SqliteConfig,
@@ -73,9 +74,34 @@ impl Default for BlacklightConfig {
             log_level: "info".to_string(),
             server: ServerConfig::default(),
             indexer: IndexerConfig::default(),
+            privacy: PrivacyConfig::default(),
             enrichment: EnrichmentConfig::default(),
             scheduler: SchedulerConfig::default(),
             sqlite: SqliteConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PrivacyConfig {
+    /// List of glob patterns to exclude from indexing.
+    pub exclude_paths: Vec<String>,
+    /// Whether to attempt to redact common secrets (API keys, etc.) from indexed text.
+    pub redact_secrets: bool,
+    /// Custom regex patterns for redaction.
+    pub redaction_patterns: Vec<String>,
+    /// How many days to keep raw session backups (0 = forever).
+    pub retention_days: u32,
+}
+
+impl Default for PrivacyConfig {
+    fn default() -> Self {
+        Self {
+            exclude_paths: Vec::new(),
+            redact_secrets: true,
+            redaction_patterns: Vec::new(),
+            retention_days: 0,
         }
     }
 }

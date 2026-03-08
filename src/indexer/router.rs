@@ -31,6 +31,7 @@ pub fn process_jsonl(
     verbose: bool,
     source_name: Option<&str>,
     source_kind: Option<&str>,
+    redactor: Option<&crate::indexer::redact::Redactor>,
 ) -> Result<(RouterStats, u64)> {
     let mut reader = JsonlReader::open(path, start_offset)?;
     let mut stats = RouterStats::default();
@@ -152,6 +153,11 @@ pub fn process_jsonl(
             }
         };
 
+        let mut ops = ops;
+        if let Some(r) = redactor {
+            ops.redact_all(r);
+        }
+
         batch.push(ops);
         stats.messages_processed += 1;
 
@@ -215,7 +221,7 @@ mod tests {
         // Write a progress message that should be skipped
         writeln!(f, r#"{{"type":"progress","uuid":"p1","sessionId":"sess1","timestamp":"2024-01-01T00:00:02Z"}}"#).unwrap();
 
-        let (stats, offset) = process_jsonl(&conn, &jsonl_path, 0, false, None, None).unwrap();
+        let (stats, offset) = process_jsonl(&conn, &jsonl_path, 0, false, None, None, None).unwrap();
         assert_eq!(stats.messages_processed, 2);
         assert_eq!(stats.messages_skipped, 1);
         assert!(offset > 0);
@@ -238,7 +244,7 @@ mod tests {
         writeln!(f, "{line1}").unwrap();
         f.flush().unwrap();
 
-        let (stats1, offset1) = process_jsonl(&conn, &jsonl_path, 0, false, None, None).unwrap();
+        let (stats1, offset1) = process_jsonl(&conn, &jsonl_path, 0, false, None, None, None).unwrap();
         assert_eq!(stats1.messages_processed, 1);
 
         // Append another line
@@ -250,7 +256,7 @@ mod tests {
         f.flush().unwrap();
 
         // Resume from offset
-        let (stats2, _) = process_jsonl(&conn, &jsonl_path, offset1, false, None, None).unwrap();
+        let (stats2, _) = process_jsonl(&conn, &jsonl_path, offset1, false, None, None, None).unwrap();
         assert_eq!(stats2.messages_processed, 1);
 
         let count: i64 = conn

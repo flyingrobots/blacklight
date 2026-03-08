@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rusqlite::Connection;
 use crate::indexer::scanner::{FileEntry, FileKind};
+use crate::indexer::redact::Redactor;
 
 /// Stats returned after processing a single file.
 #[derive(Clone, Debug, Default)]
@@ -25,7 +26,13 @@ pub trait SourceProvider: Send + Sync {
     }
 
     /// Process content files (streaming or full).
-    fn process_content(&self, _conn: &Connection, entry: &FileEntry, _start_offset: u64) -> Result<(ProcessStats, u64)> {
+    fn process_content(
+        &self, 
+        _conn: &Connection, 
+        entry: &FileEntry, 
+        _start_offset: u64,
+        _redactor: Option<&Redactor>
+    ) -> Result<(ProcessStats, u64)> {
         Ok((ProcessStats::default(), entry.size_bytes))
     }
 }

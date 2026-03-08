@@ -227,6 +227,10 @@ fn run_index(
     let backup_mode = cfg.backup_mode;
     let skip_dirs = cfg.indexer.skip_dirs.clone();
     let verbose = verbose || cfg.indexer.verbose;
+    let exclude_paths = cfg.privacy.exclude_paths.clone();
+    let redact_secrets = cfg.privacy.redact_secrets;
+    let redaction_patterns = cfg.privacy.redaction_patterns.clone();
+    let retention_days = cfg.privacy.retention_days;
 
     match indexer::run_index(indexer::IndexConfig {
         sources,
@@ -236,6 +240,10 @@ fn run_index(
         full,
         verbose,
         skip_dirs,
+        exclude_paths,
+        redact_secrets,
+        redaction_patterns,
+        retention_days,
         progress_tx: None,
         cancel_flag: None,
         pause_flag: None,

@@ -97,6 +97,7 @@ impl IndexerActor {
         let backup_mode = app_state.config.backup_mode;
         let notify_tx = app_state.notifications.clone();
         let skip_dirs = app_state.config.indexer.skip_dirs.clone();
+        let privacy = app_state.config.privacy.clone();
         let mut sources = app_state.config.resolved_sources();
 
         // Auto-discover extra sources
@@ -116,6 +117,10 @@ impl IndexerActor {
                 full,
                 verbose: false,
                 skip_dirs,
+                exclude_paths: privacy.exclude_paths,
+                redact_secrets: privacy.redact_secrets,
+                redaction_patterns: privacy.redaction_patterns,
+                retention_days: privacy.retention_days,
                 progress_tx: Some(state_tx.clone()),
                 cancel_flag: Some(cancel_flag.clone()),
                 pause_flag: Some(pause_flag),

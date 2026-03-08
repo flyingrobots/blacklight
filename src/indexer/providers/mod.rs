@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use crate::indexer::scanner::{FileEntry, FileKind};
 use crate::indexer::provider::{SourceProvider, ProcessStats};
 use crate::indexer::{sessions, router, gemini, codex};
+use crate::indexer::redact::Redactor;
 
 pub struct ClaudeProvider;
 
@@ -21,10 +22,16 @@ impl SourceProvider for ClaudeProvider {
         }
     }
 
-    fn process_content(&self, conn: &Connection, entry: &FileEntry, start_offset: u64) -> Result<(ProcessStats, u64)> {
+    fn process_content(
+        &self, 
+        conn: &Connection, 
+        entry: &FileEntry, 
+        start_offset: u64,
+        redactor: Option<&Redactor>
+    ) -> Result<(ProcessStats, u64)> {
         match entry.kind {
             FileKind::SessionJsonl => {
-                let (stats, final_offset) = router::process_jsonl(conn, &entry.path, start_offset, false, None, Some("claude"))?;
+                let (stats, final_offset) = router::process_jsonl(conn, &entry.path, start_offset, false, None, Some("claude"), redactor)?;
                 Ok((ProcessStats {
                     messages_processed: stats.messages_processed,
                     messages_skipped: stats.messages_skipped,
@@ -48,7 +55,13 @@ impl SourceProvider for GeminiProvider {
         matches!(kind, FileKind::GeminiSessionJson)
     }
 
-    fn process_content(&self, conn: &Connection, entry: &FileEntry, _start_offset: u64) -> Result<(ProcessStats, u64)> {
+    fn process_content(
+        &self, 
+        conn: &Connection, 
+        entry: &FileEntry, 
+        _start_offset: u64,
+        _redactor: Option<&Redactor>
+    ) -> Result<(ProcessStats, u64)> {
         gemini::process_gemini_session(conn, &entry.path, "gemini")?;
         Ok((ProcessStats {
             sessions_parsed: 1,
@@ -66,7 +79,13 @@ impl SourceProvider for CodexProvider {
         matches!(kind, FileKind::CodexSessionJsonl)
     }
 
-    fn process_content(&self, conn: &Connection, entry: &FileEntry, _start_offset: u64) -> Result<(ProcessStats, u64)> {
+    fn process_content(
+        &self, 
+        conn: &Connection, 
+        entry: &FileEntry, 
+        _start_offset: u64,
+        _redactor: Option<&Redactor>
+    ) -> Result<(ProcessStats, u64)> {
         codex::process_codex_session(conn, &entry.path, "codex")?;
         Ok((ProcessStats {
             sessions_parsed: 1,
