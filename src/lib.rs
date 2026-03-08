@@ -2,6 +2,7 @@ pub mod classifier;
 pub mod config;
 pub mod content;
 pub mod db;
+pub mod digest;
 pub mod enrich;
 pub mod error;
 pub mod indexer;
@@ -21,6 +22,7 @@ mod tests {
     use crate::indexer::{IndexProgress, IndexReport};
     use crate::enrich::EnrichReport;
     use crate::classifier::ClassifierReport;
+    use crate::digest::WeeklyDigest;
     use crate::server::api::sessions::UpdateOutcomeParams;
     use ts_rs::TS;
 
@@ -42,6 +44,7 @@ mod tests {
         IndexProgress::export().expect("failed to export IndexProgress");
         IndexReport::export().expect("failed to export IndexReport");
         IndexRun::export().expect("failed to export IndexRun");
+        WeeklyDigest::export().expect("failed to export WeeklyDigest");
         EnricherStatusResponse::export().expect("failed to export EnricherStatusResponse");
         EnrichReport::export().expect("failed to export EnrichReport");
         MigrationStatusResponse::export().expect("failed to export MigrationStatusResponse");

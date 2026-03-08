@@ -47,6 +47,8 @@ pub struct DateRangeParams {
 pub struct LimitParams {
     #[serde(default = "default_limit")]
     pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize, TS)]

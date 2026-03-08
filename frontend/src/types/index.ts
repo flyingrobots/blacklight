@@ -318,6 +318,20 @@ export interface ClassifierState {
   error_message: string | null
 }
 
+export interface WeeklyDigest {
+  id: number
+  start_date: string
+  end_date: string
+  content: string
+  session_count: number
+  success_count: number
+  failed_count: number
+  partial_count: number
+  abandoned_count: number
+  message_count: number
+  created_at: string
+}
+
 // Enricher types
 
 export type EnricherStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'

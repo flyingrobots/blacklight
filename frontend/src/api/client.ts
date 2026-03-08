@@ -6,7 +6,7 @@ import type {
   IndexCoverage, IndexerStatusResponse, EnricherStatusResponse,
   ReviewItem, ScheduleConfig, MigrationStatusResponse, LlmBreakdown,
   DailyProjectStats, IndexRun, UpdateOutcomeParams, OutcomeBreakdown,
-  ClassifierState
+  ClassifierState, WeeklyDigest
 } from '@/types'
 
 const BASE = '/api'
@@ -122,9 +122,16 @@ export const api = {
 
   classifier: {
     status: () => get<ClassifierState>(`${BASE}/classifier/status`),
-    start: (params?: { limit?: number; force?: boolean }) =>
+    start: (params: { limit?: number; force?: boolean }) =>
       post<unknown>(`${BASE}/classifier/start`, params ?? {}),
     stop: () => post<unknown>(`${BASE}/classifier/stop`),
+  },
+
+  digests: {
+    list: (params?: { limit?: number; offset?: number }) =>
+      get<WeeklyDigest[]>(`${BASE}/digests`, params),
+    generate: (params: { start_date: string; end_date: string }) =>
+      post<WeeklyDigest>(`${BASE}/digests/generate`, params),
   },
 
   review: {

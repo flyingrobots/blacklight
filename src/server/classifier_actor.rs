@@ -4,7 +4,7 @@ use tokio::sync::{mpsc, watch};
 use tracing::{info, warn};
 
 use crate::classifier::ClassifierConfig;
-use crate::enrich::{EnrichProgress, push_log};
+use crate::enrich::EnrichProgress;
 use crate::notifications::{self, NotificationLevel};
 use crate::server::state::{AppState, ClassifierCommand, ClassifierState, EnricherStatus};
 

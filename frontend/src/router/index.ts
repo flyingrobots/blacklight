@@ -7,9 +7,10 @@ import Projects from '@/views/Projects.vue'
 import Search from '@/views/Search.vue'
 import Insights from '@/views/Insights.vue'
 import Operations from '@/views/Operations.vue'
+import Digests from '@/views/Digests.vue'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', component: Home },
     { path: '/sessions', component: Sessions },
@@ -17,6 +18,7 @@ const router = createRouter({
     { path: '/projects', component: Projects },
     { path: '/search', component: Search },
     { path: '/insights', component: Insights },
+    { path: '/digests', component: Digests },
     { path: '/operations', component: Operations },
   ],
 })
