@@ -23,6 +23,8 @@ export interface SessionSummary {
   claude_version: string | null
   is_sidechain: boolean
   outcome: string | null
+  reason_code: string | null
+  is_user_labeled: boolean
   brief_summary: string | null
   enrichment_title: string | null
   enrichment_summary: string | null
@@ -36,6 +38,8 @@ export interface SessionSummary {
 export interface SessionOutcome {
   underlying_goal: string | null
   outcome: string | null
+  reason_code: string | null
+  is_user_labeled: boolean
   helpfulness: string | null
   session_type: string | null
   primary_success: string | null
@@ -167,6 +171,16 @@ export interface OutcomeStats {
   count: number
 }
 
+export interface ReasonStats {
+  reason_code: string
+  count: number
+}
+
+export interface OutcomeBreakdown {
+  outcomes: OutcomeStats[]
+  reasons: ReasonStats[]
+}
+
 export interface StorageOverview {
   total_blobs: number
   total_bytes: number
@@ -281,6 +295,11 @@ export interface IndexRun {
   blobs_inserted: number
   errors: number
   error_message: string | null
+}
+
+export interface UpdateOutcomeParams {
+  outcome: string
+  reason_code: string | null
 }
 
 // Enricher types

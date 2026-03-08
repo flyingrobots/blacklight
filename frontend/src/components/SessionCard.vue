@@ -5,6 +5,8 @@
       <p v-if="session.enrichment_summary" class="sc-summary">{{ session.enrichment_summary }}</p>
     </div>
     <div class="sc-meta">
+      <span v-if="session.outcome" :class="['outcome-badge', session.outcome.toLowerCase()]">{{ session.outcome }}</span>
+      <span v-if="session.reason_code" class="reason-pill">{{ session.reason_code }}</span>
       <span class="sc-project" :style="{ color: projectColor }">{{ session.project_slug }}</span>
       <span class="sc-date">{{ formatDate(session.modified_at) }}</span>
       <span v-if="session.message_count" class="sc-stat">{{ session.message_count }} msgs</span>
@@ -114,5 +116,27 @@ function formatDate(dateStr: string) {
 .sc-tag {
   color: var(--bl-c3);
   font-size: var(--bl-text-2xs);
+}
+
+.outcome-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--bl-radius-pill);
+  text-transform: uppercase;
+}
+
+.outcome-badge.success { background: rgba(63, 185, 80, 0.15); color: var(--bl-success); }
+.outcome-badge.partial { background: rgba(210, 153, 34, 0.15); color: var(--bl-warning); }
+.outcome-badge.failed { background: rgba(248, 81, 73, 0.15); color: var(--bl-danger); }
+.outcome-badge.abandoned { background: var(--bl-surface-2); color: var(--bl-text-3); }
+
+.reason-pill {
+  font-size: 10px;
+  font-family: var(--bl-font-mono);
+  color: var(--bl-text-3);
+  background: var(--bl-surface-2);
+  padding: 1px 4px;
+  border-radius: var(--bl-radius-sm);
 }
 </style>

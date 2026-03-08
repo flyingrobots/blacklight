@@ -85,6 +85,8 @@ pub struct SessionSummary {
     pub claude_version: Option<String>,
     pub is_sidechain: bool,
     pub outcome: Option<String>,
+    pub reason_code: Option<String>,
+    pub is_user_labeled: bool,
     pub brief_summary: Option<String>,
     pub enrichment_title: Option<String>,
     pub enrichment_summary: Option<String>,
@@ -135,6 +137,8 @@ pub struct SessionDetail {
 pub struct SessionOutcome {
     pub underlying_goal: Option<String>,
     pub outcome: Option<String>,
+    pub reason_code: Option<String>,
+    pub is_user_labeled: bool,
     pub helpfulness: Option<String>,
     pub session_type: Option<String>,
     pub primary_success: Option<String>,
@@ -297,6 +301,20 @@ pub struct ProjectDetail {
 pub struct OutcomeStats {
     pub outcome: String,
     pub count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
+pub struct ReasonStats {
+    pub reason_code: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
+pub struct OutcomeBreakdown {
+    pub outcomes: Vec<OutcomeStats>,
+    pub reasons: Vec<ReasonStats>,
 }
 
 /// Storage overview.

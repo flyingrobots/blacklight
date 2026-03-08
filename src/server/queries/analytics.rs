@@ -4,6 +4,7 @@ use rusqlite::{params, Connection};
 use crate::server::responses::{
     AnalyticsOverview, CoverageByKind, DailyProjectStats, DailyStats, IndexCoverage, LlmBreakdown,
     ModelUsage, OutcomeStats, ProjectBreakdown, ToolFrequency,
+    OutcomeBreakdown, ReasonStats,
 };
 
 pub fn get_overview(conn: &Connection, db_path: &str) -> Result<AnalyticsOverview> {
@@ -475,7 +476,7 @@ pub fn get_coverage(
     })
 }
 
-pub fn get_outcome_distribution(conn: &Connection) -> Result<Vec<OutcomeStats>> {
+pub fn get_outcome_distribution(conn: &Connection) -> Result<OutcomeBreakdown> {
     let mut stmt = conn.prepare(
         "SELECT COALESCE(outcome, 'unknown') as outcome, COUNT(*) as cnt
          FROM session_outcomes
@@ -483,7 +484,7 @@ pub fn get_outcome_distribution(conn: &Connection) -> Result<Vec<OutcomeStats>> 
          ORDER BY cnt DESC",
     )?;
 
-    let items = stmt
+    let outcomes = stmt
         .query_map([], |row| {
             Ok(OutcomeStats {
                 outcome: row.get(0)?,
@@ -492,5 +493,25 @@ pub fn get_outcome_distribution(conn: &Connection) -> Result<Vec<OutcomeStats>> 
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
-    Ok(items)
+    let mut stmt = conn.prepare(
+        "SELECT COALESCE(reason_code, 'unknown'), COUNT(*) as cnt
+         FROM session_outcomes
+         WHERE outcome != 'success' OR outcome IS NULL
+         GROUP BY 1
+         ORDER BY cnt DESC",
+    )?;
+
+    let reasons = stmt
+        .query_map([], |row| {
+            Ok(ReasonStats {
+                reason_code: row.get(0)?,
+                count: row.get(1)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    Ok(OutcomeBreakdown {
+        outcomes,
+        reasons,
+    })
 }

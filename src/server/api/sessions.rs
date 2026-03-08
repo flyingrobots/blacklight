@@ -1,8 +1,10 @@
 use axum::extract::{Path, Query, State};
 use axum::http::header;
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
+use serde::Deserialize;
+use ts_rs::TS;
 
 use crate::error::BlacklightError;
 use crate::server::params::{MessageListParams, SessionListParams};
@@ -17,6 +19,31 @@ pub fn routes() -> Router<AppState> {
         .route("/sessions/{id}/tools", get(get_tools))
         .route("/sessions/{id}/files", get(get_files))
         .route("/sessions/{id}/raw", get(get_raw))
+        .route("/sessions/{id}/outcome", post(update_outcome))
+}
+
+#[derive(Debug, Deserialize, TS)]
+#[ts(export, export_to = "../frontend/src/types/generated/")]
+pub struct UpdateOutcomeParams {
+    pub outcome: String,
+    pub reason_code: Option<String>,
+}
+
+async fn update_outcome(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(params): Json<UpdateOutcomeParams>,
+) -> Result<Json<serde_json::Value>, BlacklightError> {
+    state.db.call(move |conn| {
+        conn.execute(
+            "INSERT OR REPLACE INTO session_outcomes (session_id, outcome, reason_code, is_user_labeled)
+             VALUES (?1, ?2, ?3, 1)",
+            rusqlite::params![id, params.outcome, params.reason_code],
+        )?;
+        Ok(())
+    }).await?;
+
+    Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
 async fn list_sessions(
@@ -31,6 +58,7 @@ async fn list_sessions(
                 params.project.as_deref(),
                 params.from.as_deref(),
                 params.to.as_deref(),
+                params.outcome.as_deref(),
                 params.limit,
                 params.offset,
             )

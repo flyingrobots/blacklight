@@ -14,6 +14,13 @@
       />
       <input v-model="fromDate" type="date" class="date-input" @change="fetchSessions" />
       <input v-model="toDate" type="date" class="date-input" @change="fetchSessions" />
+      <select v-model="outcomeFilter" class="select-sm" @change="fetchSessions">
+        <option value="">All Outcomes</option>
+        <option value="success">Success</option>
+        <option value="partial">Partial</option>
+        <option value="failed">Failed</option>
+        <option value="abandoned">Abandoned</option>
+      </select>
     </div>
 
     <div v-if="loading" class="loading-state"><div class="spinner"></div></div>
@@ -53,6 +60,7 @@ const loading = ref(true)
 const projectFilter = ref('')
 const fromDate = ref('')
 const toDate = ref('')
+const outcomeFilter = ref('')
 
 let debounceTimer: ReturnType<typeof setTimeout>
 const currentPage = computed(() => Math.floor(offset.value / limit.value) + 1)
@@ -72,6 +80,7 @@ async function fetchSessions() {
       to: toDate.value || undefined,
       limit: limit.value,
       offset: offset.value,
+      outcome: outcomeFilter.value || undefined,
     })
     sessions.value = result.items
     total.value = result.total

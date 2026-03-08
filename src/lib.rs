@@ -19,6 +19,7 @@ mod tests {
     use crate::server::state::*;
     use crate::indexer::{IndexProgress, IndexReport};
     use crate::enrich::EnrichReport;
+    use crate::server::api::sessions::UpdateOutcomeParams;
     use ts_rs::TS;
 
     #[test]
@@ -30,6 +31,7 @@ mod tests {
         
         SessionSummary::export().expect("failed to export SessionSummary");
         SessionDetail::export().expect("failed to export SessionDetail");
+        UpdateOutcomeParams::export().expect("failed to export UpdateOutcomeParams");
         MessageDetail::export().expect("failed to export MessageDetail");
         IndexerStatusResponse::export().expect("failed to export IndexerStatusResponse");
         IndexerState::export().expect("failed to export IndexerState");

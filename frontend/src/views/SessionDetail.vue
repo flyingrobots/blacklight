@@ -27,9 +27,30 @@
 
         <p v-if="session.enrichment_summary" class="summary-text">{{ session.enrichment_summary }}</p>
 
-        <div v-if="session.outcome" class="outcome-row">
-          <span class="outcome-badge" v-if="session.outcome.outcome">{{ session.outcome.outcome }}</span>
-          <span v-if="session.outcome.underlying_goal" class="outcome-goal">{{ session.outcome.underlying_goal }}</span>
+        <div class="outcome-section">
+          <div v-if="session.outcome && !isEditingOutcome" class="outcome-row">
+            <span :class="['outcome-badge', session.outcome.outcome?.toLowerCase()]" v-if="session.outcome.outcome">{{ session.outcome.outcome }}</span>
+            <span v-if="session.outcome.reason_code" class="reason-pill">{{ session.outcome.reason_code }}</span>
+            <span v-if="session.outcome.underlying_goal" class="outcome-goal">{{ session.outcome.underlying_goal }}</span>
+            <button class="btn-text" @click="startEditOutcome">Edit</button>
+          </div>
+          <div v-else-if="!isEditingOutcome" class="outcome-empty">
+            <button class="btn-text" @click="startEditOutcome">+ Add Outcome</button>
+          </div>
+          
+          <div v-else class="outcome-editor">
+            <select v-model="editOutcome.outcome" class="select-sm">
+              <option v-for="o in OUTCOMES" :key="o" :value="o">{{ o }}</option>
+            </select>
+            <select v-if="editOutcome.outcome !== 'success'" v-model="editOutcome.reason_code" class="select-sm">
+              <option :value="null">-- Select Reason --</option>
+              <option v-for="r in REASONS" :key="r" :value="r">{{ r }}</option>
+            </select>
+            <button class="btn btn-primary btn-xs" @click="saveOutcome" :disabled="saving">
+              {{ saving ? 'Saving...' : 'Save' }}
+            </button>
+            <button class="btn-text" @click="isEditingOutcome = false">Cancel</button>
+          </div>
         </div>
       </header>
 
@@ -92,6 +113,43 @@ const session = ref<SessionDetail | null>(null)
 const messages = ref<MessageDetail[]>([])
 const files = ref<FileReference[]>([])
 const activeTab = ref('Conversation')
+
+const OUTCOMES = ['success', 'partial', 'failed', 'abandoned']
+const REASONS = ['repro_missing', 'context_drift', 'tool_misuse', 'dependency_trap', 'unknown']
+
+const isEditingOutcome = ref(false)
+const saving = ref(false)
+const editOutcome = ref({
+  outcome: 'success',
+  reason_code: null as string | null
+})
+
+function startEditOutcome() {
+  if (session.value?.outcome) {
+    editOutcome.value = {
+      outcome: session.value.outcome.outcome || 'success',
+      reason_code: session.value.outcome.reason_code
+    }
+  }
+  isEditingOutcome.value = true
+}
+
+async function saveOutcome() {
+  if (!session.value) return
+  saving.value = true
+  try {
+    await api.sessions.updateOutcome(session.value.id, editOutcome.value)
+    // Refresh session to get updated outcome
+    const s = await api.sessions.get(session.value.id)
+    session.value = s
+    isEditingOutcome.value = false
+  } catch (e: any) {
+    alert('Failed to save outcome: ' + e.message)
+  } finally {
+    saving.value = false
+  }
+}
+
 const tabs = ['Conversation', 'Files', 'Raw']
 const rawLoading = ref(false)
 
@@ -247,9 +305,44 @@ watch(activeTab, (tab) => {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--bl-radius-pill);
-  background: rgba(63, 185, 80, 0.15);
-  color: var(--bl-success);
+  text-transform: uppercase;
 }
+
+.outcome-badge.success { background: rgba(63, 185, 80, 0.15); color: var(--bl-success); }
+.outcome-badge.partial { background: rgba(210, 153, 34, 0.15); color: var(--bl-warning); }
+.outcome-badge.failed { background: rgba(248, 81, 73, 0.15); color: var(--bl-danger); }
+.outcome-badge.abandoned { background: var(--bl-surface-2); color: var(--bl-text-3); }
+
+.reason-pill {
+  font-size: var(--bl-text-2xs);
+  font-family: var(--bl-font-mono);
+  color: var(--bl-text-3);
+  background: var(--bl-surface-2);
+  padding: 2px 6px;
+  border-radius: var(--bl-radius-sm);
+}
+
+.outcome-section {
+  margin-top: 0.5rem;
+}
+
+.outcome-editor {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--bl-accent);
+  font-size: var(--bl-text-xs);
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.btn-text:hover { opacity: 1; text-decoration: underline; }
 
 .outcome-goal {
   font-size: var(--bl-text-xs);

@@ -5,7 +5,7 @@ import type {
   ProjectDetail, OutcomeStats, StorageOverview, ContentBlob,
   IndexCoverage, IndexerStatusResponse, EnricherStatusResponse,
   ReviewItem, ScheduleConfig, MigrationStatusResponse, LlmBreakdown,
-  DailyProjectStats, IndexRun
+  DailyProjectStats, IndexRun, UpdateOutcomeParams, OutcomeBreakdown
 } from '@/types'
 
 const BASE = '/api'
@@ -42,7 +42,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 
 export const api = {
   sessions: {
-    list: (params?: { project?: string; from?: string; to?: string; limit?: number; offset?: number }) =>
+    list: (params?: { project?: string; from?: string; to?: string; outcome?: string; limit?: number; offset?: number }) =>
       get<Paginated<SessionSummary>>(`${BASE}/sessions`, params),
     get: (id: string) =>
       get<SessionDetail>(`${BASE}/sessions/${id}`),
@@ -64,6 +64,8 @@ export const api = {
       }
       return text
     },
+    updateOutcome: (id: string, params: UpdateOutcomeParams) =>
+      post<unknown>(`${BASE}/sessions/${id}/outcome`, params),
   },
 
   search: (params: { q: string; kind?: string; project?: string; limit?: number; offset?: number }) =>
@@ -82,7 +84,7 @@ export const api = {
       get<ProjectBreakdown[]>(`${BASE}/analytics/projects`, params),
     llms: (params?: { from?: string; to?: string }) =>
       get<LlmBreakdown[]>(`${BASE}/analytics/llms`, params),
-    outcomes: () => get<OutcomeStats[]>(`${BASE}/analytics/outcomes`),
+    outcomes: () => get<OutcomeBreakdown>(`${BASE}/analytics/outcomes`),
     coverage: () => get<IndexCoverage>(`${BASE}/analytics/coverage`),
   },
 

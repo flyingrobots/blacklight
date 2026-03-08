@@ -13,6 +13,7 @@ pub fn list_sessions(
     project: Option<&str>,
     from: Option<&str>,
     to: Option<&str>,
+    outcome: Option<&str>,
     limit: i64,
     offset: i64,
 ) -> Result<Paginated<SessionSummary>> {
@@ -33,7 +34,7 @@ pub fn list_sessions(
                 (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as message_count,
                 s.created_at, s.modified_at, s.git_branch,
                 s.claude_version, s.is_sidechain,
-                o.outcome, o.brief_summary,
+                o.outcome, o.brief_summary, o.reason_code, o.is_user_labeled,
                 e.title, e.summary, e.approval_status,
                 s.source_name, s.source_kind, s.app_version, s.fingerprint
          FROM sessions s
@@ -50,9 +51,11 @@ pub fn list_sessions(
     if let Some(t) = to {
         qb = qb.r#where("s.created_at <= ?", Box::new(t.to_string()));
     }
+    if let Some(o) = outcome {
+        qb = qb.r#where("o.outcome = ?", Box::new(o.to_string()));
+    }
 
     // 1. Get total count
-    let mut count_sql = "SELECT COUNT(*) FROM sessions s".to_string();
     let mut count_params: Vec<Box<dyn rusqlite::ToSql + Send>> = Vec::new();
     let mut where_clauses = Vec::new();
     if let Some(p) = project {
@@ -67,6 +70,12 @@ pub fn list_sessions(
         where_clauses.push(format!("s.created_at <= ?{}", count_params.len() + 1));
         count_params.push(Box::new(t.to_string()));
     }
+    if let Some(o) = outcome {
+        where_clauses.push(format!("o.outcome = ?{}", count_params.len() + 1));
+        count_params.push(Box::new(o.to_string()));
+    }
+    
+    let mut count_sql = "SELECT COUNT(*) FROM sessions s LEFT JOIN session_outcomes o ON o.session_id = s.id".to_string();
     if !where_clauses.is_empty() {
         count_sql.push_str(" WHERE ");
         count_sql.push_str(&where_clauses.join(" AND "));
@@ -100,13 +109,15 @@ pub fn list_sessions(
             row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0, // is_sidechain
             row.get::<_, Option<String>>(11)?, // outcome
             row.get::<_, Option<String>>(12)?, // brief_summary
-            row.get::<_, Option<String>>(13)?, // enrichment_title
-            row.get::<_, Option<String>>(14)?, // enrichment_summary
-            row.get::<_, Option<String>>(15)?, // approval_status
-            row.get::<_, Option<String>>(16)?, // source_name
-            row.get::<_, Option<String>>(17)?, // source_kind
-            row.get::<_, Option<String>>(18)?, // app_version
-            row.get::<_, Option<String>>(19)?, // fingerprint
+            row.get::<_, Option<String>>(13)?, // reason_code
+            row.get::<_, Option<i64>>(14)?.unwrap_or(0) != 0, // is_user_labeled
+            row.get::<_, Option<String>>(15)?, // enrichment_title
+            row.get::<_, Option<String>>(16)?, // enrichment_summary
+            row.get::<_, Option<String>>(17)?, // approval_status
+            row.get::<_, Option<String>>(18)?, // source_name
+            row.get::<_, Option<String>>(19)?, // source_kind
+            row.get::<_, Option<String>>(20)?, // app_version
+            row.get::<_, Option<String>>(21)?, // fingerprint
         ))
     })?.collect::<std::result::Result<Vec<_>, _>>()?;
 
@@ -146,14 +157,16 @@ pub fn list_sessions(
     let mut items = Vec::with_capacity(session_rows.len());
     for (id, project_path, project_slug, first_prompt, summary, message_count,
          created_at, modified_at, git_branch, claude_version, is_sidechain,
-         outcome, brief_summary, enrichment_title, enrichment_summary, approval_status,
+         outcome, brief_summary, reason_code, is_user_labeled,
+         enrichment_title, enrichment_summary, approval_status,
          source_name, source_kind, app_version, fingerprint) in session_rows
     {
         let tags = tags_by_session.remove(&id).unwrap_or_default();
         items.push(SessionSummary {
             id, project_path, project_slug, first_prompt, summary, message_count,
             created_at, modified_at, git_branch, claude_version, is_sidechain,
-            outcome, brief_summary, enrichment_title, enrichment_summary,
+            outcome, reason_code, is_user_labeled, brief_summary, 
+            enrichment_title, enrichment_summary,
             approval_status, tags,
             source_name, source_kind, app_version, fingerprint,
         });
@@ -185,6 +198,7 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                 s.claude_version, s.is_sidechain,
                 o.underlying_goal, o.outcome, o.helpfulness, o.session_type,
                 o.primary_success, o.friction_detail, o.brief_summary,
+                o.reason_code, o.is_user_labeled,
                 e.title, e.summary, e.approval_status,
                 s.source_name, s.source_kind, s.app_version, s.fingerprint
          FROM sessions s
@@ -205,6 +219,8 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                     primary_success: row.get(15)?,
                     friction_detail: row.get(16)?,
                     brief_summary: row.get(17)?,
+                    reason_code: row.get(18)?,
+                    is_user_labeled: row.get::<_, Option<i64>>(19)?.unwrap_or(0) != 0,
                 })
             } else {
                 None
@@ -223,14 +239,14 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<SessionDetail>>
                 claude_version: row.get(9)?,
                 is_sidechain: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
                 outcome,
-                enrichment_title: row.get(18)?,
-                enrichment_summary: row.get(19)?,
-                approval_status: row.get(20)?,
+                enrichment_title: row.get(20)?,
+                enrichment_summary: row.get(21)?,
+                approval_status: row.get(22)?,
                 tags: Vec::new(), // filled below
-                source_name: row.get(21)?,
-                source_kind: row.get(22)?,
-                app_version: row.get(23)?,
-                fingerprint: row.get(24)?,
+                source_name: row.get(23)?,
+                source_kind: row.get(24)?,
+                app_version: row.get(25)?,
+                fingerprint: row.get(26)?,
             })
         })
         .optional()?;

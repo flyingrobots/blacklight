@@ -7,6 +7,7 @@ pub struct SessionListParams {
     pub project: Option<String>,
     pub from: Option<String>,
     pub to: Option<String>,
+    pub outcome: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: i64,
     #[serde(default)]
