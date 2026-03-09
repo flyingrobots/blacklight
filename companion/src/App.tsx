@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Square, Pause, ExternalLink, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Play, Square, ExternalLink, ChevronDown, ChevronRight, Activity, Terminal, Info, AlertCircle } from 'lucide-react';
 
 interface IndexerStatus {
   status: string;
+  outdated_count: number;
   progress: {
     phase: string;
     files_total: number;
@@ -16,55 +17,137 @@ interface WorkerStatus {
   sessions_total: number;
   sessions_done: number;
   sessions_failed: number;
+  outdated_count: number;
+}
+
+interface OverviewStats {
+  total_sessions: number;
+  total_messages: number;
+  last_session: string | null;
 }
 
 declare global {
   interface Window {
     electron: {
       openDashboard: () => Promise<void>;
+      startServer: () => Promise<void>;
+      stopServer: () => Promise<void>;
+      getServerStatus: () => Promise<string>;
+      onServerStatus: (callback: (status: string) => void) => () => void;
     };
   }
 }
 
 const BASE_URL = 'http://localhost:3141/api';
 
+const LogViewer = ({ lines }: { lines: string[] }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [lines]);
+
+  return (
+    <div className="log-viewer" ref={scrollRef}>
+      {lines.length === 0 ? (
+        <div className="status-text">No recent logs...</div>
+      ) : (
+        lines.map((l, i) => <div key={i} className="log-line">{l}</div>)
+      )}
+    </div>
+  );
+};
+
 function App() {
+  const [serverStatus, setServerStatus] = useState<'running' | 'stopped'>('stopped');
   const [indexer, setIndexer] = useState<IndexerStatus | null>(null);
   const [enricher, setEnricher] = useState<WorkerStatus | null>(null);
   const [classifier, setClassifier] = useState<WorkerStatus | null>(null);
+  const [overview, setOverview] = useState<OverviewStats | null>(null);
+  const [indexerLogs, setIndexerLogs] = useState<string[]>([]);
+  const [enricherLogs, setEnricherLogs] = useState<string[]>([]);
+  
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ indexer: true, enrichment: false, classifier: false });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<{ id: number; msg: string; type: 'info' | 'error' }[]>([]);
+
+  const prevStatus = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    window.electron.getServerStatus().then((s) => setServerStatus(s as any));
+    const unsubscribe = window.electron.onServerStatus((status) => {
+      setServerStatus(status as any);
+      if (status === 'running') addAlert('Server started');
+      else addAlert('Server stopped', 'error');
+    });
+    return unsubscribe;
+  }, []);
+
+  const addAlert = (msg: string, type: 'info' | 'error' = 'info') => {
+    const id = Date.now();
+    setAlerts(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => {
+      setAlerts(prev => prev.filter(a => a.id !== id));
+    }, 4000);
+  };
 
   const fetchStatus = async () => {
+    if (serverStatus !== 'running') {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const [idxRes, enrRes, clsRes] = await Promise.all([
+      const [idxRes, enrRes, clsRes, ovRes, idxLogRes, enrLogRes] = await Promise.all([
         fetch(`${BASE_URL}/indexer/status`),
         fetch(`${BASE_URL}/enrichment/status`),
         fetch(`${BASE_URL}/classifier/status`),
+        fetch(`${BASE_URL}/analytics/overview`),
+        fetch(`${BASE_URL}/indexer/logs`),
+        fetch(`${BASE_URL}/enrichment/logs`),
       ]);
-
-      if (!idxRes.ok || !enrRes.ok || !clsRes.ok) throw new Error('Server offline');
 
       const idxData = await idxRes.json();
       const enrData = await enrRes.json();
       const clsData = await clsRes.json();
+      const ovData = await ovRes.json();
+      const idxLogs = await idxLogRes.json();
+      const enrLogs = await enrLogRes.json();
 
       setIndexer(idxData);
       setEnricher(enrData);
       setClassifier(clsData);
+      setOverview(ovData);
+      setIndexerLogs(idxLogs);
+      setEnricherLogs(enrLogs);
+
+      checkTransitions('Indexer', idxData.status);
+      checkTransitions('Enrichment', enrData.status);
+      checkTransitions('Classification', clsData.status);
+
       setError(null);
     } catch (err) {
-      setError('Could not connect to Blacklight server');
+      if (serverStatus === 'running') setError('Backend unreachable');
     } finally {
       setLoading(false);
     }
+  };
+
+  const checkTransitions = (label: string, status: string) => {
+    const last = prevStatus.current[label];
+    if (last === 'running' && status === 'completed') addAlert(`${label} finished!`);
+    if (last === 'running' && status === 'failed') addAlert(`${label} failed`, 'error');
+    prevStatus.current[label] = status;
   };
 
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(fetchStatus, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [serverStatus]);
 
   const handleAction = async (type: string, action: string, params = {}) => {
     try {
@@ -74,126 +157,161 @@ function App() {
         body: JSON.stringify(params),
       });
       fetchStatus();
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
-  if (loading) {
-    return <div className="container"><div className="progress-text">Connecting...</div></div>;
-  }
-
-  if (error) {
-    return (
-      <div className="container">
-        <div className="brand">Blacklight</div>
-        <div className="error-msg">{error}</div>
-        <button className="btn btn-primary" onClick={fetchStatus}>
-          <RefreshCw size={14} /> Retry
-        </button>
-      </div>
-    );
-  }
-
-  const getIndexerPct = () => {
-    if (!indexer) return 0;
-    const { files_total, files_done } = indexer.progress;
-    return files_total === 0 ? 0 : (files_done / files_total) * 100;
-  };
-
-  const getWorkerPct = (w: WorkerStatus | null) => {
-    if (!w) return 0;
-    return w.sessions_total === 0 ? 0 : (w.sessions_done / w.sessions_total) * 100;
-  };
+  const toggle = (key: string) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <div className="container">
       <header className="header">
-        <div className="brand">Blacklight Companion</div>
-        <button className="btn-link" onClick={() => window.electron.openDashboard()}>
-          <ExternalLink size={14} />
-        </button>
+        <div className="brand-group">
+          <div className={`status-pip ${serverStatus}`} title={`Server is ${serverStatus}`}></div>
+          <div className="brand">Blacklight</div>
+        </div>
+        <div className="controls">
+          {serverStatus === 'stopped' ? (
+            <button className="btn btn-primary" onClick={() => window.electron.startServer()}>Start Server</button>
+          ) : (
+            <button className="btn btn-danger-text" onClick={() => window.electron.stopServer()}>Stop Server</button>
+          )}
+          <button className="btn-link" title="Web Dashboard" onClick={() => window.electron.openDashboard()}>
+            <ExternalLink size={14} />
+          </button>
+        </div>
       </header>
 
-      <div className="status-grid">
-        {/* Indexer */}
-        <div className="status-card">
-          <div className="sc-header">
-            <span className="sc-title">Indexer</span>
-            <span className={`badge badge-${indexer?.status}`}>{indexer?.status}</span>
+      {serverStatus === 'running' && overview && (
+        <div className="mini-stats">
+          <div className="stat-box">
+            <span className="stat-val">{overview.total_sessions}</span>
+            <span className="stat-lab">Sessions</span>
           </div>
-          {indexer?.status === 'running' && (
-            <div className="progress-section">
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${getIndexerPct()}%` }}></div>
-              </div>
-              <div className="progress-text">{indexer.progress.phase} ({indexer.progress.files_done}/{indexer.progress.files_total})</div>
-            </div>
-          )}
-          <div className="controls">
-            {indexer?.status === 'running' ? (
-              <>
-                <button className="btn" onClick={() => handleAction('indexer', 'pause')}><Pause size={12} /> Pause</button>
-                <button className="btn btn-danger" onClick={() => handleAction('indexer', 'stop')}><Square size={12} /> Stop</button>
-              </>
-            ) : indexer?.status === 'paused' ? (
-              <button className="btn btn-primary" onClick={() => handleAction('indexer', 'resume')}><Play size={12} /> Resume</button>
-            ) : (
-              <button className="btn btn-primary" onClick={() => handleAction('indexer', 'start', { full: false })}><Play size={12} /> Start</button>
-            )}
+          <div className="stat-box">
+            <span className="stat-val">{overview.total_messages.toLocaleString()}</span>
+            <span className="stat-lab">Messages</span>
           </div>
         </div>
+      )}
 
-        {/* Enrichment */}
-        <div className="status-card">
-          <div className="sc-header">
-            <span className="sc-title">Enrichment</span>
-            <span className={`badge badge-${enricher?.status}`}>{enricher?.status}</span>
-          </div>
-          {enricher?.status === 'running' && (
-            <div className="progress-section">
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${getWorkerPct(enricher)}%` }}></div>
+      <div className="accordion">
+        {serverStatus === 'running' ? (
+          <>
+            {/* Indexer */}
+            <div className="acc-item">
+              <div className="acc-header" onClick={() => toggle('indexer')}>
+                <div className="acc-title-group">
+                  <Activity size={14} style={{ color: indexer?.status === 'running' ? 'var(--bl-success)' : 'inherit' }} />
+                  <span className="acc-title">Indexer</span>
+                </div>
+                {expanded.indexer ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </div>
-              <div className="progress-text">{enricher.sessions_done}/{enricher.sessions_total} sessions</div>
+              {expanded.indexer && (
+                <div className="acc-content">
+                  <div className="sc-header">
+                    <span className="status-text">{indexer?.status || 'idle'}</span>
+                    {indexer?.status === 'running' && <span className="status-text">{Math.round((indexer.progress.files_done / (indexer.progress.files_total || 1)) * 100)}%</span>}
+                  </div>
+                  {indexer?.status === 'running' && (
+                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${(indexer.progress.files_done / (indexer.progress.files_total || 1)) * 100}%` }}></div></div>
+                  )}
+                  {indexer && indexer.outdated_count > 0 && indexer.status !== 'running' && (
+                    <div className="outdated-text">{indexer.outdated_count} sessions to index</div>
+                  )}
+                  <div className="controls">
+                    {indexer?.status === 'running' ? (
+                      <button className="btn btn-danger-text" onClick={() => handleAction('indexer', 'stop')}>Stop</button>
+                    ) : (
+                      <button className="btn btn-primary" onClick={() => handleAction('indexer', 'start')}>Start</button>
+                    )}
+                  </div>
+                  <LogViewer lines={indexerLogs} />
+                </div>
+              )}
             </div>
-          )}
-          <div className="controls">
-            {enricher?.status === 'running' ? (
-              <button className="btn btn-danger" onClick={() => handleAction('enrichment', 'stop')}><Square size={12} /> Stop</button>
-            ) : (
-              <button className="btn btn-primary" onClick={() => handleAction('enrichment', 'start', { force: false })}><Play size={12} /> Start</button>
-            )}
-          </div>
-        </div>
 
-        {/* Classifier */}
-        <div className="status-card">
-          <div className="sc-header">
-            <span className="sc-title">Classification</span>
-            <span className={`badge badge-${classifier?.status}`}>{classifier?.status}</span>
-          </div>
-          {classifier?.status === 'running' && (
-            <div className="progress-section">
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${getWorkerPct(classifier)}%` }}></div>
+            {/* Enrichment */}
+            <div className="acc-item">
+              <div className="acc-header" onClick={() => toggle('enrichment')}>
+                <div className="acc-title-group">
+                  <Terminal size={14} style={{ color: enricher?.status === 'running' ? 'var(--bl-success)' : 'inherit' }} />
+                  <span className="acc-title">Enrichment</span>
+                </div>
+                {expanded.enrichment ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </div>
-              <div className="progress-text">{classifier.sessions_done}/{classifier.sessions_total} sessions</div>
+              {expanded.enrichment && (
+                <div className="acc-content">
+                  <div className="sc-header">
+                    <span className="status-text">{enricher?.status || 'idle'}</span>
+                    {enricher?.status === 'running' && <span className="status-text">{Math.round((enricher.sessions_done / (enricher.sessions_total || 1)) * 100)}%</span>}
+                  </div>
+                  {enricher?.status === 'running' && (
+                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${(enricher.sessions_done / (enricher.sessions_total || 1)) * 100}%` }}></div></div>
+                  )}
+                  {enricher && enricher.outdated_count > 0 && enricher.status !== 'running' && (
+                    <div className="outdated-text">{enricher.outdated_count} pending</div>
+                  )}
+                  <div className="controls">
+                    {enricher?.status === 'running' ? (
+                      <button className="btn btn-danger-text" onClick={() => handleAction('enrichment', 'stop')}>Stop</button>
+                    ) : (
+                      <button className="btn btn-primary" onClick={() => handleAction('enrichment', 'start')}>Start</button>
+                    )}
+                  </div>
+                  <LogViewer lines={enricherLogs} />
+                </div>
+              )}
             </div>
-          )}
-          <div className="controls">
-            {classifier?.status === 'running' ? (
-              <button className="btn btn-danger" onClick={() => handleAction('classifier', 'stop')}><Square size={12} /> Stop</button>
-            ) : (
-              <button className="btn btn-primary" onClick={() => handleAction('classifier', 'start', { force: false })}><Play size={12} /> Start</button>
-            )}
+
+            {/* Classification */}
+            <div className="acc-item">
+              <div className="acc-header" onClick={() => toggle('classifier')}>
+                <div className="acc-title-group">
+                  <Info size={14} style={{ color: classifier?.status === 'running' ? 'var(--bl-success)' : 'inherit' }} />
+                  <span className="acc-title">Classification</span>
+                </div>
+                {expanded.classifier ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </div>
+              {expanded.classifier && (
+                <div className="acc-content">
+                  <div className="sc-header">
+                    <span className="status-text">{classifier?.status || 'idle'}</span>
+                    {classifier?.status === 'running' && <span className="status-text">{Math.round((classifier.sessions_done / (classifier.sessions_total || 1)) * 100)}%</span>}
+                  </div>
+                  {classifier?.status === 'running' && (
+                    <div className="progress-bar"><div className="progress-fill" style={{ width: `${(classifier.sessions_done / (classifier.sessions_total || 1)) * 100}%` }}></div></div>
+                  )}
+                  {classifier && classifier.outdated_count > 0 && classifier.status !== 'running' && (
+                    <div className="outdated-text">{classifier.outdated_count} pending</div>
+                  )}
+                  <div className="controls">
+                    {classifier?.status === 'running' ? (
+                      <button className="btn btn-danger-text" onClick={() => handleAction('classifier', 'stop')}>Stop</button>
+                    ) : (
+                      <button className="btn btn-primary" onClick={() => handleAction('classifier', 'start')}>Start</button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <AlertCircle size={24} style={{ opacity: 0.3, marginBottom: '0.5rem' }} />
+            <span>Connect to start monitoring</span>
           </div>
-        </div>
+        )}
+      </div>
+
+      <div className="alerts-zone">
+        {alerts.map(a => (
+          <div key={a.id} className={`alert-toast ${a.type}`}>{a.msg}</div>
+        ))}
       </div>
 
       <footer className="footer">
-        <button className="btn-link" onClick={() => window.electron.openDashboard()}>Open Dashboard</button>
-        <div className="progress-text">v0.1.0</div>
+        <div className="status-text">v0.1.0</div>
+        {overview?.last_session && <div className="status-text">Last: {new Date(overview.last_session).toLocaleDateString()}</div>}
       </footer>
     </div>
   );

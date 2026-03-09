@@ -15,16 +15,30 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn status(State(state): State<AppState>) -> Result<Json<ClassifierState>, BlacklightError> {
-    let current = state.classifier.borrow().clone();
+    let mut current = state.classifier.borrow().clone();
+    
+    // Calculate actual outdated count from DB
+    let count = state.db.call(|conn| {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sessions s
+             LEFT JOIN session_outcomes o ON o.session_id = s.id
+             WHERE o.session_id IS NULL OR o.is_user_labeled = 0",
+            [],
+            |row| row.get(0)
+        )?;
+        Ok(count)
+    }).await?;
+
+    current.outdated_count = count;
     Ok(Json(current))
 }
 
 #[derive(Deserialize)]
-struct StartClassifierParams {
+pub struct StartClassifierParams {
     #[serde(default)]
-    limit: Option<usize>,
+    pub limit: Option<usize>,
     #[serde(default)]
-    force: bool,
+    pub force: bool,
 }
 
 async fn start(

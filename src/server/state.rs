@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use ts_rs::TS;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::config::BlacklightConfig;
@@ -113,6 +113,12 @@ pub struct SchedulerHandle {
     pub cancel_flag: Arc<AtomicBool>,
 }
 
+impl SchedulerHandle {
+    pub fn reset_for_run(&mut self) {
+        self.cancel_flag.store(false, Ordering::Relaxed);
+    }
+}
+
 /// Indexer control commands.
 #[derive(Debug)]
 pub enum IndexerCommand {
@@ -151,6 +157,7 @@ pub struct ClassifierState {
     pub latest_report: Option<crate::classifier::ClassifierReport>,
     pub error_message: Option<String>,
     pub run_id: Option<i64>,
+    pub outdated_count: i64,
 }
 
 /// Shared application state passed to all axum handlers.

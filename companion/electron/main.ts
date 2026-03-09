@@ -1,14 +1,18 @@
-import { app, BrowserWindow, Tray, nativeImage, Menu, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, Tray, nativeImage, Menu, ipcMain, shell } from 'electron';
 import path from 'path';
-import isDev from 'electron-is-dev';
+import isDevFromModule from 'electron-is-dev';
+import { spawn, exec, ChildProcess } from 'child_process';
+
+const isDev = isDevFromModule && process.env.NODE_ENV !== 'production';
 
 let tray: Tray | null = null;
 let window: BrowserWindow | null = null;
+let serverProcess: ChildProcess | null = null;
 
 function createWindow() {
   window = new BrowserWindow({
     width: 320,
-    height: 450,
+    height: 500,
     show: false,
     frame: false,
     resizable: false,
@@ -20,12 +24,8 @@ function createWindow() {
     },
   });
 
-  if (isDev) {
-    window.loadURL('http://localhost:5173');
-    // window.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    window.loadFile(path.join(__dirname, '../dist/index.html'));
-  }
+  const url = isDev ? 'http://localhost:5173' : `file://${path.join(__dirname, '../dist/index.html')}`;
+  window.loadURL(url);
 
   window.on('blur', () => {
     if (window && !window.webContents.isDevToolsOpened()) {
@@ -35,54 +35,89 @@ function createWindow() {
 }
 
 function createTray() {
-  // Use a simple template icon for macOS
-  const icon = nativeImage.createFromPath(path.join(__dirname, '../assets/tray-icon.png'));
-  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  const iconPath = path.join(__dirname, '../assets/tray-icon.png');
+  const icon = nativeImage.createFromPath(iconPath);
+  
+  // Set as template for macOS (automatically flips black/white for light/dark mode)
+  icon.setTemplateImage(true);
+  
+  tray = new Tray(icon);
   tray.setToolTip('Blacklight Companion');
+  
+  // Add a title so it's visible even if the icon fails
+  if (process.platform === 'darwin') {
+    tray.setTitle('BL');
+  }
 
-  tray.on('click', () => {
-    toggleWindow();
-  });
+  tray.on('click', () => toggleWindow());
 
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Open Dashboard', click: () => shell.openExternal('http://localhost:3141') },
+    { type: 'separator' },
+    { label: 'Quit', click: () => {
+      stopServer();
+      app.quit();
+    }},
+  ]);
+  
   tray.on('right-click', () => {
-    const contextMenu = Menu.buildFromTemplate([
-      { label: 'Open Dashboard', click: () => { /* open in browser */ } },
-      { type: 'separator' },
-      { label: 'Quit', click: () => app.quit() },
-    ]);
     tray?.popUpContextMenu(contextMenu);
   });
 }
 
 function toggleWindow() {
   if (!window) return;
-  if (window.isVisible()) {
-    window.hide();
-  } else {
-    showWindow();
-  }
+  window.isVisible() ? window.hide() : showWindow();
 }
 
 function showWindow() {
   if (!window || !tray) return;
-  
   const trayBounds = tray.getBounds();
   const windowBounds = window.getBounds();
-  
-  // Center window horizontally under the tray icon
   const x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
   const y = Math.round(trayBounds.y + trayBounds.height + 4);
-  
   window.setPosition(x, y, false);
   window.show();
   window.focus();
 }
 
+async function startServer() {
+  if (serverProcess) return;
+  
+  console.log('Cleaning up existing processes...');
+  // Force kill any existing blacklight process
+  exec('pkill -9 blacklight', () => {
+    console.log('Starting Blacklight backend...');
+    const rootDir = path.join(__dirname, '../..');
+    
+    serverProcess = spawn('cargo', ['run', '--bin', 'blacklight', '--', 'serve', '--no-open'], {
+      cwd: rootDir,
+      stdio: 'inherit',
+      env: { ...process.env, RUST_LOG: 'info' }
+    });
+
+    serverProcess.on('exit', (code) => {
+      console.log(`Backend exited with code ${code}`);
+      serverProcess = null;
+      window?.webContents.send('server-status', 'stopped');
+    });
+
+    window?.webContents.send('server-status', 'running');
+  });
+}
+
+function stopServer() {
+  if (serverProcess) {
+    console.log('Stopping backend...');
+    serverProcess.kill('SIGTERM');
+    serverProcess = null;
+    window?.webContents.send('server-status', 'stopped');
+  }
+}
+
 app.whenReady().then(() => {
   createWindow();
   createTray();
-  
-  // Hide dock icon on macOS
   if (process.platform === 'darwin' && app.dock) {
     app.dock.hide();
   }
@@ -90,11 +125,14 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    stopServer();
     app.quit();
   }
 });
 
-// IPC handlers for controlling Blacklight
-ipcMain.handle('open-dashboard', () => {
-  require('electron').shell.openExternal('http://localhost:3141');
-});
+app.on('before-quit', () => stopServer());
+
+ipcMain.handle('open-dashboard', () => shell.openExternal('http://localhost:3141'));
+ipcMain.handle('start-server', () => startServer());
+ipcMain.handle('stop-server', () => stopServer());
+ipcMain.handle('get-server-status', () => serverProcess ? 'running' : 'stopped');
